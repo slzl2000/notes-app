@@ -33,6 +33,7 @@
     <header class="bar">
       <button id="back" class="icon" type="button" aria-label="목록으로">←</button>
       <span id="edited" class="muted small"></span>
+      <button id="favorite" class="icon star" type="button" aria-label="즐겨찾기" aria-pressed="false">☆</button>
       <button id="find-open" class="icon" type="button" aria-label="이 노트에서 찾기">⌕</button>
       <button id="delete" class="text danger" type="button">삭제</button>
     </header>
@@ -43,6 +44,7 @@
       <button id="find-next" class="icon" type="button" aria-label="다음 위치">▼</button>
       <button id="find-close" class="icon" type="button" aria-label="찾기 닫기">✕</button>
     </div>
+    <input id="note-title" type="text" placeholder="제목" aria-label="노트 제목" autocomplete="off">
     <div id="editor-box"><textarea id="editor" aria-label="노트 내용"></textarea></div>
   </div>
 </main>

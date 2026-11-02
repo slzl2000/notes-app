@@ -50,13 +50,13 @@ const putImage = image => tx('images', 'readwrite', s => { s.put(image); });
 
 const newId = () => Date.now().toString(36) + '-' + crypto.randomUUID().slice(0, 8);
 
-function makeNote(body, created, updated) {
+function makeNote(body, created, updated, title = '', favorite = false) {
   const now = new Date().toISOString();
-  return { id: newId(), body, text: htmlToText(body), created: created || now, updated: updated || now, rev: 1, sha: null, dirty: true, deleted: false };
+  return { id: newId(), title, favorite, body, text: htmlToText(body), created: created || now, updated: updated || now, rev: 1, sha: null, dirty: true, deleted: false };
 }
 
-const hasContent = n => Boolean(n.text.trim()) || /<img\b/i.test(n.body);
-const titleOf = n => (n.text.split('\n').find(l => l.trim()) || '').trim() || (/<img\b/i.test(n.body) ? '이미지 노트' : '빈 노트');
+const hasContent = n => Boolean((n.title || '').trim() || n.text.trim()) || /<img\b/i.test(n.body);
+const titleOf = n => (n.title || '').trim() || (n.text.split('\n').find(l => l.trim()) || '').trim() || (/<img\b/i.test(n.body) ? '이미지 노트' : '빈 노트');
 
 function tagsOf(text) {
   return [...new Set([...text.matchAll(/(?:^|\s)#([\p{L}\p{N}_-]+)/gu)].map(m => m[1]))];
@@ -99,7 +99,7 @@ function htmlToText(html) {
 const escapeHtml = text => text.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
 function toFile(n) {
-  return `<!doctype html>\n<html>\n<head>\n<meta charset="utf-8">\n<meta name="created" content="${n.created}">\n<meta name="updated" content="${n.updated}">\n<title>${escapeHtml(titleOf(n))}</title>\n</head>\n<body>\n${n.body}\n</body>\n</html>\n`;
+  return `<!doctype html>\n<html>\n<head>\n<meta charset="utf-8">\n<meta name="created" content="${n.created}">\n<meta name="updated" content="${n.updated}">\n<meta name="note-title" content="${escapeHtml(n.title || '')}">\n<meta name="favorite" content="${Boolean(n.favorite)}">\n<title>${escapeHtml(titleOf(n))}</title>\n</head>\n<body>\n${n.body}\n</body>\n</html>\n`;
 }
 
 function fromFile(text) {
@@ -110,7 +110,7 @@ function fromFile(text) {
   };
   const now = new Date().toISOString();
   const body = doc.body.innerHTML.trim();
-  return { created: meta('created') || now, updated: meta('updated') || now, body, text: htmlToText(body) };
+  return { title: meta('note-title') || '', favorite: meta('favorite') === 'true', created: meta('created') || now, updated: meta('updated') || now, body, text: htmlToText(body) };
 }
 
 function bytesToBase64(bytes) {
@@ -343,6 +343,7 @@ let currentId = null;
 let activeTag = null;
 let saveTimer = null;
 let savedValue = '';
+let savedTitle = '';
 let loadedBody = '';
 
 function countMatches(text, q) {
@@ -351,11 +352,14 @@ function countMatches(text, q) {
   return count;
 }
 
+const searchableText = n => `${n.title || ''} ${n.text}`.replace(/\s+/g, ' ').toLowerCase();
+
 function appendSnippet(el, note, q) {
   const flat = note.text.replace(/\s+/g, ' ');
   const at = q ? flat.toLowerCase().indexOf(q) : -1;
   if (at < 0) {
-    const first = note.text.split('\n').filter(l => l.trim()).slice(1).join(' ');
+    const lines = note.text.split('\n').filter(l => l.trim());
+    const first = ((note.title || '').trim() ? lines : lines.slice(1)).join(' ');
     el.textContent = `${formatDate(note.updated)}  ${first.slice(0, 80)}`;
     return;
   }
@@ -374,7 +378,7 @@ async function render() {
   const all = (await getAll()).filter(n => !n.deleted);
   // Blank notes stay hidden from the list unless they are the one being edited.
   const visible = all.filter(n => hasContent(n) || n.id === currentId);
-  const tags = [...new Set(visible.flatMap(n => tagsOf(n.text)))].sort((a, b) => a.localeCompare(b, 'ko'));
+  const tags = [...new Set(visible.flatMap(n => tagsOf(`${n.title || ''} ${n.text}`)))].sort((a, b) => a.localeCompare(b, 'ko'));
   if (activeTag && !tags.includes(activeTag)) activeTag = null;
 
   $('tags').replaceChildren(...tags.map(tag => {
@@ -388,24 +392,44 @@ async function render() {
 
   const q = $('search').value.trim().toLowerCase();
   const shown = visible
-    .filter(n => !q || n.text.replace(/\s+/g, ' ').toLowerCase().includes(q))
-    .filter(n => !activeTag || tagsOf(n.text).includes(activeTag))
+    .filter(n => !q || searchableText(n).includes(q))
+    .filter(n => !activeTag || tagsOf(`${n.title || ''} ${n.text}`).includes(activeTag))
     .sort((a, b) => b.updated.localeCompare(a.updated));
 
-  $('list').replaceChildren(...shown.map(n => {
+  const favorites = shown.filter(n => n.favorite);
+  const others = shown.filter(n => !n.favorite);
+  const label = text => {
+    const li = document.createElement('li');
+    li.className = 'label';
+    li.textContent = text;
+    return li;
+  };
+  const row = n => {
     const li = document.createElement('li');
     const b = document.createElement('button');
     b.type = 'button';
-    b.className = n.id === currentId ? 'on' : '';
+    b.className = n.id === currentId ? 'note on' : 'note';
     const title = document.createElement('strong');
     title.textContent = titleOf(n);
     const sub = document.createElement('span');
     appendSnippet(sub, n, q);
     b.append(title, sub);
     b.onclick = () => openNote(n.id);
-    li.append(b);
+    const star = document.createElement('button');
+    star.type = 'button';
+    star.className = n.favorite ? 'star on' : 'star';
+    star.textContent = n.favorite ? '★' : '☆';
+    star.setAttribute('aria-label', n.favorite ? '즐겨찾기 해제' : '즐겨찾기');
+    star.setAttribute('aria-pressed', String(Boolean(n.favorite)));
+    star.onclick = () => toggleFavorite(n.id);
+    li.append(b, star);
     return li;
-  }));
+  };
+  $('list').replaceChildren(
+    ...(favorites.length ? [label('즐겨찾기'), ...favorites.map(row)] : []),
+    ...(favorites.length && others.length ? [label('노트')] : []),
+    ...others.map(row),
+  );
 
   const empty = $('empty');
   empty.hidden = shown.length > 0;
@@ -426,14 +450,20 @@ async function flushEditor() {
   await imageWork;
   const id = currentId;
   const body = toStoredHtml(editor.getContent());
-  if (body === savedValue) return;
+  const title = $('note-title').value;
+  if (body === savedValue && title === savedTitle) return;
+  const bodyChanged = body !== savedValue;
   savedValue = body;
-  loadedBody = body;
+  savedTitle = title;
+  if (bodyChanged) loadedBody = body;
   const text = htmlToText(body);
   await updateNote(id, n => {
     if (!n) return;
-    n.body = body;
-    n.text = text;
+    n.title = title;
+    if (bodyChanged) {
+      n.body = body;
+      n.text = text;
+    }
     n.updated = new Date().toISOString();
     n.rev += 1;
     n.dirty = true;
@@ -461,12 +491,38 @@ async function loadIntoEditor(n, keepPlace) {
   // The editor tidies HTML when loading; compare later edits against its own version.
   savedValue = toStoredHtml(editor.getContent());
   loadedBody = n.body;
+  savedTitle = n.title || '';
+  $('note-title').value = savedTitle;
+  showFavorite(n);
+}
+
+function showFavorite(n) {
+  const star = $('favorite');
+  star.textContent = n.favorite ? '★' : '☆';
+  star.classList.toggle('on', Boolean(n.favorite));
+  star.setAttribute('aria-pressed', String(Boolean(n.favorite)));
+}
+
+// Marking a favorite is not an edit, so the note keeps its place and its date.
+async function toggleFavorite(id) {
+  const note = await updateNote(id, n => {
+    if (!n) return;
+    n.favorite = !n.favorite;
+    n.rev += 1;
+    n.dirty = true;
+    return n;
+  });
+  if (note && id === currentId) showFavorite(note);
+  await render();
+  scheduleSync(1000);
 }
 
 function hideEditor() {
   currentId = null;
   savedValue = '';
+  savedTitle = '';
   loadedBody = '';
+  $('note-title').value = '';
   closeFind();
   if (editor) { loading = true; editor.setContent(''); loading = false; }
   $('editor-wrap').hidden = true;
@@ -509,7 +565,7 @@ async function createNote() {
   const n = makeNote('');
   await updateNote(n.id, () => n);
   await showNote(n, false);
-  editor.focus();
+  $('note-title').focus();
 }
 
 async function closeEditor() {
@@ -541,7 +597,11 @@ async function refreshEditor() {
   if (!n || n.deleted) {
     hideEditor();
     toast('열어 둔 노트가 다른 기기에서 삭제됐어요.');
-  } else if (n.body !== loadedBody && toStoredHtml(editor.getContent()) === savedValue) {
+  } else {
+    showFavorite(n);
+    if ((n.body === loadedBody && (n.title || '') === savedTitle)
+      || toStoredHtml(editor.getContent()) !== savedValue
+      || $('note-title').value !== savedTitle) return;
     await loadIntoEditor(n, true);
     $('edited').textContent = '수정 ' + formatDate(n.updated);
     if (!$('find-bar').hidden) runFind(false);
@@ -910,9 +970,9 @@ async function syncOnce(cfg) {
     if (remoteSha && remoteSha !== note.sha) {
       if (note.dirty) {
         const theirs = fromFile(fromBase64((await api(cfg, `/repos/${cfg.repo}/git/blobs/${remoteSha}`)).content));
-        if (theirs.body !== note.body.trim()) {
+        if (theirs.body !== note.body.trim() || theirs.title !== (note.title || '')) {
           // Changed on both sides: keep this device's text as a separate copy.
-          const copy = makeNote(`${note.body}<p>(충돌 사본: 다른 기기의 수정과 겹쳐 따로 보관했어요)</p>`, note.created, note.updated);
+          const copy = makeNote(`${note.body}<p>(충돌 사본: 다른 기기의 수정과 겹쳐 따로 보관했어요)</p>`, note.created, note.updated, note.title || '', Boolean(note.favorite));
           await updateNote(copy.id, () => copy);
           if (currentId === note.id) { currentId = copy.id; savedValue = toStoredHtml(editor.getContent()); loadedBody = ''; }
           toast('다른 기기와 수정이 겹쳐 사본을 만들었어요.');
@@ -1043,10 +1103,12 @@ async function parseEnex(text) {
     const converted = enmlToHtml(child('content') ? child('content').textContent : '', resources);
     skipped += converted.skipped;
     const tags = children('tag').map(c => '#' + c.textContent.trim().replace(/\s+/g, '_')).join(' ');
-    const body = (title ? `<h1>${escapeHtml(title)}</h1>` : '') + converted.html + (tags ? `<p>${escapeHtml(tags)}</p>` : '');
+    const body = converted.html + (tags ? `<p>${escapeHtml(tags)}</p>` : '');
     const created = enexDate(child('created') && child('created').textContent);
     const updated = enexDate(child('updated') && child('updated').textContent) || created;
-    notes.push({ ...makeNote(body, created, updated), id: await importId('en-', `${created}\n${body}`) });
+    // Hashes the title with the body so notes imported before title fields existed keep their id.
+    const idSource = (title ? `<h1>${escapeHtml(title)}</h1>` : '') + body;
+    notes.push({ ...makeNote(body, created, updated, title), id: await importId('en-', `${created}\n${idSource}`) });
   }
   return { notes, skipped };
 }
@@ -1062,7 +1124,7 @@ async function parseBackup(text) {
   }
   const notes = data.notes
     .filter(n => typeof n.body === 'string' && /^[\w-]+$/.test(n.id))
-    .map(n => ({ ...makeNote(n.body, n.created, n.updated), id: n.id }));
+    .map(n => ({ ...makeNote(n.body, n.created, n.updated, typeof n.title === 'string' ? n.title : '', n.favorite === true), id: n.id }));
   return { notes, skipped: 0 };
 }
 
@@ -1094,7 +1156,7 @@ async function exportAll() {
   await flushEditor();
   const notes = (await getAll())
     .filter(n => !n.deleted && hasContent(n))
-    .map(({ id, body, created, updated }) => ({ id, body, created, updated }));
+    .map(({ id, title, favorite, body, created, updated }) => ({ id, title: title || '', favorite: Boolean(favorite), body, created, updated }));
   const images = [];
   for (const image of await getAllImages()) {
     images.push({ name: image.name, data: bytesToBase64(new Uint8Array(await image.blob.arrayBuffer())) });
@@ -1153,6 +1215,11 @@ function clearSettings() {
 // ---------- Wiring ----------
 
 $('new-note').onclick = createNote;
+$('favorite').onclick = () => { if (currentId) toggleFavorite(currentId); };
+$('note-title').addEventListener('input', onEdit);
+$('note-title').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); editor.focus(); }
+});
 $('back').onclick = () => history.back();
 $('search').addEventListener('input', render);
 $('delete').onclick = () => $('confirm').showModal();
