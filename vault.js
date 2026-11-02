@@ -364,7 +364,7 @@ function lockVault() {
   editingId = null;
   formDirty = false;
   clearVaultInputs();
-  for (const id of ['vault-entries', 'vault-pattern-list', 'vault-username-chips', 'vault-pattern-chips', 'vault-url-link', 'vault-memo-links']) $(id).replaceChildren();
+  for (const id of ['vault-entries', 'vault-pattern-list', 'vault-username-chips', 'vault-pattern-chips', 'vault-url-link', 'vault-memo-links', 'vault-similar']) $(id).replaceChildren();
   if (unsaved) {
     aesEncrypt(key, new TextEncoder().encode(JSON.stringify(unsaved)))
       .then(box => localStorage.setItem(DRAFT_KEY, JSON.stringify(box)))
@@ -460,6 +460,7 @@ function fillForm(data) {
   $('vault-memo').value = data.memo || '';
   renderFormChips();
   renderFormLinks();
+  renderSimilar();
   fitMemo();
 }
 
@@ -539,6 +540,7 @@ function renderFormChips() {
 function openForm(entry) {
   editingId = entry ? entry.id : null;
   formDirty = false;
+  duplicateConfirmed = false;
   fillForm(entry || {});
   $('vault-password').type = 'password';
   $('vault-show').textContent = '보기';
@@ -581,10 +583,36 @@ async function removeEntry(id) {
   scheduleSync(500);
 }
 
+// ---------- Duplicates ----------
+
+const squash = s => (s || '').toLowerCase().replace(/\s+/g, '');
+const hostOf = u => squash(u).replace(/^[a-z]+:\/\//, '').replace(/^www\./, '').split(/[/?#:]/)[0];
+// "naver.com" typed as the site name matches https://www.naver.com/login typed as the address.
+const siteKeys = e => new Set([squash(e.site), hostOf(e.site), hostOf(e.url)].filter(Boolean));
+const sameSite = (a, b) => { const keys = siteKeys(b); return [...siteKeys(a)].some(k => keys.has(k)); };
+let duplicateConfirmed = false;
+
+function renderSimilar() {
+  const data = readForm();
+  const matches = editingId ? [] : vaultEntries.filter(e => sameSite(e, data));
+  const label = document.createElement('span');
+  label.className = 'chips-label muted small';
+  label.textContent = '이미 있는 항목 (누르면 열려요)';
+  $('vault-similar').replaceChildren(...(matches.length ? [label] : []), ...matches.map(e =>
+    chip(e.username ? `${entryName(e)} · ${e.username}` : entryName(e), () => openForm(e))));
+}
+
 async function saveEntry(event) {
   event.preventDefault();
   const data = readForm();
   if (!entryName(data)) { vaultMessage('사이트명이나 주소 중 하나는 적어 주세요.', true); return; }
+  // The same site may hold several accounts; only the same site with the same ID is a duplicate.
+  const duplicate = vaultEntries.find(e => e.id !== editingId && sameSite(e, data) && squash(e.username) === squash(data.username));
+  if (duplicate && !duplicateConfirmed) {
+    duplicateConfirmed = true;
+    vaultMessage(`'${entryName(duplicate)}'에 같은 아이디 항목이 이미 있어요. 그래도 따로 저장하려면 저장을 한 번 더 누르세요.`, true);
+    return;
+  }
   await storeEntry(editingId || newId(), data);
   backToList();
   vaultMessage('저장했어요.');
@@ -800,7 +828,8 @@ $('vault-lock').onclick = lockVault;
 $('vault-add').onclick = () => openForm(null);
 $('vault-search').addEventListener('input', renderVaultList);
 $('vault-form').addEventListener('submit', saveEntry);
-$('vault-form').addEventListener('input', () => { formDirty = true; });
+$('vault-form').addEventListener('input', () => { formDirty = true; duplicateConfirmed = false; });
+for (const id of ['vault-site', 'vault-url']) $(id).addEventListener('input', renderSimilar);
 $('vault-memo').addEventListener('input', fitMemo);
 $('vault-memo').addEventListener('input', renderFormLinks);
 $('vault-url').addEventListener('input', renderFormLinks);
