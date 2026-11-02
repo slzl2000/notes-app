@@ -282,24 +282,28 @@ function todoDetail(item, titleEl) {
   close.append(todoButton('작성 완료', () => toggleTodoDetail(item.id), 'primary'));
   box.append(close);
 
-  const actions = document.createElement('div');
-  actions.className = 'row';
-  actions.append(item.done
+  // Two fixed rows, with delete at the end of the second, so asking to confirm moves nothing.
+  const moves = document.createElement('div');
+  moves.className = 'row todo-actions';
+  moves.append(item.done
     ? todoButton('완료 취소', () => finishTodo(item.id, false))
     : todoButton('완료로 이동', () => finishTodo(item.id, true)));
+  const order = document.createElement('div');
+  order.className = 'row todo-actions';
   if (!item.done) {
     for (const [list, name] of TODO_LISTS) {
-      if (list !== item.list) actions.append(todoButton(toListLabel(name), () => moveTodo(item.id, list)));
+      if (list !== item.list) moves.append(todoButton(toListLabel(name), () => moveTodo(item.id, list)));
     }
-    actions.append(todoButton('↑ 위로', () => shiftTodo(item.id, -1)), todoButton('↓ 아래로', () => shiftTodo(item.id, 1)));
+    order.append(todoButton('↑ 위로', () => shiftTodo(item.id, -1)), todoButton('↓ 아래로', () => shiftTodo(item.id, 1)));
   }
   const remove = todoButton('삭제', () => {
     if (remove.dataset.armed) { removeTodo(item.id); return; }
     remove.dataset.armed = '1';
-    remove.textContent = '한 번 더 누르면 삭제';
-  }, 'text danger');
-  actions.append(remove);
-  box.append(actions);
+    remove.textContent = '정말 삭제';
+    remove.className = 'todo-remove danger-bg';
+  }, 'todo-remove text danger');
+  order.append(remove);
+  box.append(moves, order);
   requestAnimationFrame(() => fitTodoMemo(memo));
   return box;
 }

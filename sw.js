@@ -1,7 +1,7 @@
 'use strict';
 
 // Bump the version only when you want to change the app; otherwise it never updates itself.
-const CACHE = 'notes-v30';
+const CACHE = 'notes-v31';
 const T = 'vendor/tinymce/';
 const FILES = [
   './', 'index.html', 'style.css', 'app.js', 'vault.js', 'todo.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png',
