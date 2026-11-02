@@ -272,6 +272,19 @@ dialog#vault {
 .chips { display: flex; flex-wrap: wrap; gap: 6px; margin: -4px 0 12px; }
 .chips:empty { display: none; }
 .chips button { max-width: 100%; overflow: hidden; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.chips a {
+  max-width: 100%;
+  padding: 0 12px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--accent);
+  font-size: 13px;
+  line-height: 34px;
+  text-decoration: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .vault-bio { width: 100%; min-height: 48px; margin-bottom: 20px; }
 .vault-panel textarea {
   display: block;

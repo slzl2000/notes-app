@@ -350,7 +350,7 @@ function lockVault() {
   editingId = null;
   formDirty = false;
   clearVaultInputs();
-  for (const id of ['vault-entries', 'vault-pattern-list', 'vault-username-chips', 'vault-pattern-chips']) $(id).replaceChildren();
+  for (const id of ['vault-entries', 'vault-pattern-list', 'vault-username-chips', 'vault-pattern-chips', 'vault-url-link', 'vault-memo-links']) $(id).replaceChildren();
   if (unsaved) {
     aesEncrypt(key, new TextEncoder().encode(JSON.stringify(unsaved)))
       .then(box => localStorage.setItem(DRAFT_KEY, JSON.stringify(box)))
@@ -445,7 +445,33 @@ function fillForm(data) {
   $('vault-password').value = data.password || '';
   $('vault-memo').value = data.memo || '';
   renderFormChips();
+  renderFormLinks();
   fitMemo();
+}
+
+// The address box takes bare domains like naver.com; the memo needs http:// or www. to spot one.
+function addressLink(value) {
+  const v = value.trim();
+  if (/^https?:\/\/\S+$/i.test(v)) return { text: v, href: v };
+  if (/^[\w-]+(\.[\w-]+)+([/:?#]\S*)?$/.test(v)) return { text: v, href: `https://${v}` };
+  return null;
+}
+
+function linkChip({ text, href }) {
+  const a = document.createElement('a');
+  a.href = href;
+  a.target = '_blank';
+  a.rel = 'noopener noreferrer';
+  a.textContent = `↗ ${text}`;
+  return a;
+}
+
+function renderFormLinks() {
+  const address = addressLink($('vault-url').value);
+  $('vault-url-link').replaceChildren(...(address ? [linkChip(address)] : []));
+  const seen = new Set();
+  const memoLinks = findUrls($('vault-memo').value).filter(u => !seen.has(u.href) && seen.add(u.href));
+  $('vault-memo-links').replaceChildren(...memoLinks.map(linkChip));
 }
 
 function fitMemo() {
@@ -762,6 +788,8 @@ $('vault-search').addEventListener('input', renderVaultList);
 $('vault-form').addEventListener('submit', saveEntry);
 $('vault-form').addEventListener('input', () => { formDirty = true; });
 $('vault-memo').addEventListener('input', fitMemo);
+$('vault-memo').addEventListener('input', renderFormLinks);
+$('vault-url').addEventListener('input', renderFormLinks);
 window.addEventListener('resize', fitMemo);
 $('vault-cancel').onclick = backToList;
 $('vault-delete').onclick = deleteEntry;

@@ -229,6 +229,9 @@ function ensureEditor() {
       contextmenu: false,
       browser_spellcheck: true,
       convert_urls: false,
+      // Tapping a link shows a small bar with an open button; Ctrl+click opens it on a PC.
+      link_context_toolbar: true,
+      link_default_protocol: 'https',
       automatic_uploads: false,
       paste_data_images: true,
       paste_merge_formats: false,
@@ -262,6 +265,7 @@ function ensureEditor() {
           }, true);
           ed.on('input Undo Redo ExecCommand', onEdit);
           ed.on('PastePostProcess SetContent', () => { if (!loading) processImages(); });
+          ed.on('PastePostProcess', e => linkifyText(e.node));
           ed.on('click', e => {
             if (e.target.nodeName === 'INPUT' && e.target.type === 'checkbox') {
               if (e.target.hasAttribute('checked')) e.target.removeAttribute('checked');
@@ -275,6 +279,44 @@ function ensureEditor() {
     });
   });
   return editorReady;
+}
+
+// Web addresses written as plain text; stops before Korean text written straight after one.
+function findUrls(text) {
+  const found = [];
+  for (const m of text.matchAll(/(?:https?:\/\/|www\.)[^\s<>"'\u0080-￿]+/gi)) {
+    const url = m[0].replace(/[.,;:!?)\]}]+$/, '');
+    if (url.length < 5 || /^www\.$/i.test(url)) continue;
+    found.push({ start: m.index, end: m.index + url.length, text: url, href: /^www\./i.test(url) ? `https://${url}` : url });
+  }
+  return found;
+}
+
+// Turns typed or pasted addresses into links; the autolink plugin only catches them as they are typed.
+function linkifyText(root) {
+  const doc = root.ownerDocument;
+  const walker = doc.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const nodes = [];
+  while (walker.nextNode()) {
+    const node = walker.currentNode;
+    if (!node.parentElement.closest('a') && /https?:\/\/|www\./i.test(node.data)) nodes.push(node);
+  }
+  for (const node of nodes) {
+    const urls = findUrls(node.data);
+    if (!urls.length) continue;
+    const parts = doc.createDocumentFragment();
+    let at = 0;
+    for (const url of urls) {
+      parts.append(node.data.slice(at, url.start));
+      const a = doc.createElement('a');
+      a.href = url.href;
+      a.textContent = url.text;
+      parts.append(a);
+      at = url.end;
+    }
+    parts.append(node.data.slice(at));
+    node.replaceWith(parts);
+  }
 }
 
 // Excel puts cell colours in a <style> block as classes; move them onto the cells so they survive.
@@ -497,6 +539,7 @@ async function loadIntoEditor(n, keepPlace) {
   loading = true;
   const place = keepPlace ? editor.selection.getBookmark(2, true) : null;
   editor.setContent(html);
+  linkifyText(editor.getBody());
   if (place) { try { editor.selection.moveToBookmark(place); } catch { /* the text moved away */ } }
   editor.undoManager.clear();
   loading = false;
