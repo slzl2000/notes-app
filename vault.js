@@ -594,23 +594,32 @@ let duplicateConfirmed = false;
 
 function renderSimilar() {
   const data = readForm();
-  const matches = editingId ? [] : vaultEntries.filter(e => sameSite(e, data));
+  const matches = vaultEntries.filter(e => e.id !== editingId && sameSite(e, data));
   const label = document.createElement('span');
   label.className = 'chips-label muted small';
-  label.textContent = '이미 있는 항목 (누르면 열려요)';
+  label.textContent = '같은 사이트 항목 (누르면 열려요)';
   $('vault-similar').replaceChildren(...(matches.length ? [label] : []), ...matches.map(e =>
-    chip(e.username ? `${entryName(e)} · ${e.username}` : entryName(e), () => openForm(e))));
+    chip(e.username ? `${entryName(e)} · ${e.username}` : entryName(e), () => {
+      if (editingId && formDirty) { vaultMessage('고친 내용을 먼저 저장하거나 취소해 주세요.', true); return; }
+      openForm(e);
+    })));
 }
 
 async function saveEntry(event) {
   event.preventDefault();
   const data = readForm();
   if (!entryName(data)) { vaultMessage('사이트명이나 주소 중 하나는 적어 주세요.', true); return; }
-  // The same site may hold several accounts; only the same site with the same ID is a duplicate.
-  const duplicate = vaultEntries.find(e => e.id !== editingId && sameSite(e, data) && squash(e.username) === squash(data.username));
+  // A new entry is checked against every entry for the site. An edited one only against the same ID,
+  // or each save of one of several accounts on a site would ask again.
+  const sameId = e => squash(e.username) === squash(data.username);
+  const others = vaultEntries.filter(e => e.id !== editingId && sameSite(e, data));
+  const duplicate = others.find(sameId) || (editingId ? null : others[0]);
   if (duplicate && !duplicateConfirmed) {
     duplicateConfirmed = true;
-    vaultMessage(`'${entryName(duplicate)}'에 같은 아이디 항목이 이미 있어요. 그래도 따로 저장하려면 저장을 한 번 더 누르세요.`, true);
+    vaultMessage(sameId(duplicate)
+      ? `'${entryName(duplicate)}'에 같은 아이디 항목이 이미 있어요. 그래도 따로 저장하려면 저장을 한 번 더 누르세요.`
+      : `'${entryName(duplicate)}' 항목이 이미 있어요. 다른 계정이라면 저장을 한 번 더 누르세요.`, true);
+    $('vault').scrollTop = 0;
     return;
   }
   await storeEntry(editingId || newId(), data);
