@@ -510,6 +510,8 @@ async function render() {
     return li;
   };
   $('list').replaceChildren(
+    // todo.js may still be loading on the first draw; it draws the list again once it is in.
+    ...(q || activeTag || typeof todoEntry !== 'function' ? [] : [todoEntry()]),
     ...(favorites.length ? [label('즐겨찾기'), ...favorites.map(row)] : []),
     ...(favorites.length && others.length ? [label('노트')] : []),
     ...others.map(row),

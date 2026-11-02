@@ -11,6 +11,7 @@
   --danger: #b3321f;
   --urgent: #a83a2a;
   --urgent-bg: rgb(168 58 42 / 6%);
+  --handle: #8a847a;
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -25,6 +26,7 @@
     --danger: #ef8571;
     --urgent: #c8704e;
     --urgent-bg: rgb(200 112 78 / 9%);
+    --handle: #d4cec3;
   }
 }
 * { box-sizing: border-box; }
@@ -157,6 +159,7 @@ body.resizing #main { pointer-events: none; }
   font-size: 18px;
   text-align: center;
 }
+#list li.todo-entry button { min-height: 60px; padding-left: 13px; border-top: 0; border-left: 3px solid var(--urgent); background: var(--urgent-bg); }
 #list strong, #list span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #list strong { font-weight: 600; }
 #list span { color: var(--muted); font-size: 13px; }
@@ -340,14 +343,15 @@ dialog .todo-add select { flex: none; width: auto; margin: 0; padding: 8px 6px; 
 /* Six dots, two across and three down, drawn rather than typed so every phone shows the same. */
 .todo-handle::before {
   content: '';
-  width: 12px;
-  height: 18px;
-  background: radial-gradient(circle, var(--muted) 1.7px, transparent 2.1px) 0 0 / 6px 6px;
+  width: 14px;
+  height: 21px;
+  background: radial-gradient(circle, var(--handle) 2.1px, transparent 2.5px) 0 0 / 7px 7px;
 }
 .todo-items li.dragging { position: relative; z-index: 1; background: var(--selected); border-radius: 8px; box-shadow: 0 3px 10px rgb(0 0 0 / 25%); }
 body.todo-dragging, body.todo-dragging * { cursor: grabbing; user-select: none; -webkit-user-select: none; }
-.todo-actions + .todo-actions { margin-top: 8px; }
-.todo-remove { min-width: 84px; margin-left: auto; }
+.todo-actions { align-items: center; gap: 6px; }
+.todo-actions > button { padding: 0 10px; }
+.todo-actions > .todo-remove { min-width: 84px; margin-left: auto; }
 .todo-text { flex: 1; min-width: 0; min-height: 48px; padding: 6px 0; border: 0; text-align: left; }
 .todo-text strong { display: block; font-weight: 400; overflow-wrap: anywhere; }
 .todo-text span { display: block; overflow: hidden; color: var(--muted); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }

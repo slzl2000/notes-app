@@ -71,19 +71,23 @@ function addTodo(text, list) {
   changeTodos(items => { items.push(newTodo(items, text, list, false)); });
 }
 
+// Moving a resolved item into a list brings it back as a live one.
 function moveTodo(id, list) {
+  let revived = false;
+  if (!loadTodos().items.some(i => i.id === id && !i.done)) openTodoId = null;
   changeTodos(items => {
     const item = items.find(i => i.id === id);
     if (!item) return;
-    Object.assign(item, { list, order: topOrder(items, list), updated: new Date().toISOString() });
+    revived = Boolean(item.done);
+    Object.assign(item, { list, done: '', order: topOrder(items, list), updated: new Date().toISOString() });
   });
-  toast(`${toListLabel(TODO_LISTS.find(([key]) => key === list)[1])} 옮겼어요.`);
+  toast(`${toListLabel(TODO_LISTS.find(([key]) => key === list)[1])} ${revived ? '되돌렸어요' : '옮겼어요'}.`);
 }
 
-function finishTodo(id, done) {
+function finishTodo(id) {
   openTodoId = null;
-  editTodo(id, { done: done ? new Date().toISOString() : '' });
-  toast(done ? "완료했어요. 아래 '완료'에 있어요." : '완료를 취소했어요.');
+  editTodo(id, { done: new Date().toISOString() });
+  toast("해결했어요. 아래 '해결'에 있어요.");
 }
 
 // '긴급으로', '단기로': 으로 after a final consonant other than ㄹ.
@@ -91,20 +95,6 @@ function toListLabel(name) {
   const code = name.charCodeAt(name.length - 1) - 0xac00;
   const final = code >= 0 && code < 11172 ? code % 28 : 0;
   return `${name}${final && final !== 8 ? '으로' : '로'}`;
-}
-
-function shiftTodo(id, step) {
-  changeTodos(items => {
-    const item = items.find(i => i.id === id);
-    if (!item) return;
-    const list = liveIn(items, item.list);
-    const other = list[list.indexOf(item) + step];
-    if (!other) return;
-    const now = new Date().toISOString();
-    [item.order, other.order] = [other.order, item.order];
-    item.updated = now;
-    other.updated = now;
-  });
 }
 
 function removeTodo(id) {
@@ -201,7 +191,7 @@ function todoRow(item) {
   const text = document.createElement('strong');
   text.textContent = item.text;
   label.append(text);
-  const note = item.done ? `${formatDate(item.done)} 완료` : (item.memo || '').split('\n').find(l => l.trim()) || '';
+  const note = item.done ? `${formatDate(item.done)} 해결` : (item.memo || '').split('\n').find(l => l.trim()) || '';
   if (note) {
     const sub = document.createElement('span');
     sub.textContent = note;
@@ -220,7 +210,7 @@ function todoRow(item) {
     const handle = document.createElement('span');
     handle.className = 'todo-handle';
     handle.title = '끌어서 순서 바꾸기';
-    handle.setAttribute('aria-hidden', 'true'); // the ↑↓ buttons in the details do the same
+    handle.setAttribute('aria-hidden', 'true');
     handle.addEventListener('pointerdown', e => startTodoDrag(e, li));
     row.append(handle);
   }
@@ -352,28 +342,26 @@ function todoDetail(item, titleEl) {
   close.append(todoButton('작성 완료', () => toggleTodoDetail(item.id), 'primary'));
   box.append(close);
 
-  // Two fixed rows, with delete at the end of the second, so asking to confirm moves nothing.
+  // One row: where the item can go, with 해결 as one of the places, and delete at the end with a
+  // fixed width, so asking to confirm moves nothing.
   const moves = document.createElement('div');
   moves.className = 'row todo-actions';
-  moves.append(item.done
-    ? todoButton('완료 취소', () => finishTodo(item.id, false))
-    : todoButton('완료로 이동', () => finishTodo(item.id, true)));
-  const order = document.createElement('div');
-  order.className = 'row todo-actions';
-  if (!item.done) {
-    for (const [list, name] of TODO_LISTS) {
-      if (list !== item.list) moves.append(todoButton(toListLabel(name), () => moveTodo(item.id, list)));
-    }
-    order.append(todoButton('↑ 위로', () => shiftTodo(item.id, -1)), todoButton('↓ 아래로', () => shiftTodo(item.id, 1)));
+  const caption = document.createElement('span');
+  caption.className = 'muted small';
+  caption.textContent = '이동';
+  moves.append(caption);
+  for (const [list, name] of TODO_LISTS) {
+    if (item.done || list !== item.list) moves.append(todoButton(name, () => moveTodo(item.id, list)));
   }
+  if (!item.done) moves.append(todoButton('해결', () => finishTodo(item.id)));
   const remove = todoButton('삭제', () => {
     if (remove.dataset.armed) { removeTodo(item.id); return; }
     remove.dataset.armed = '1';
     remove.textContent = '정말 삭제';
     remove.className = 'todo-remove danger-bg';
   }, 'todo-remove text danger');
-  order.append(remove);
-  box.append(moves, order);
+  moves.append(remove);
+  box.append(moves);
   requestAnimationFrame(() => fitTodoMemo(memo));
   return box;
 }
@@ -436,6 +424,24 @@ function runTodoImport() {
 }
 
 // ---------- Opening and closing ----------
+
+// The to-do page is opened most often, so it sits on top of the note list with its counts.
+function todoEntry() {
+  const items = loadTodos().items.filter(i => !i.deleted);
+  const counts = TODO_LISTS.map(([list, name]) => [name, liveIn(items, list).length]);
+  const li = document.createElement('li');
+  li.className = 'todo-entry';
+  const b = document.createElement('button');
+  b.type = 'button';
+  const title = document.createElement('strong');
+  title.textContent = '☑ 할 일';
+  const sub = document.createElement('span');
+  sub.textContent = counts.some(([, n]) => n) ? counts.map(([name, n]) => `${name} ${n}`).join(' · ') : '할 일이 없어요.';
+  b.append(title, sub);
+  b.onclick = openTodo;
+  li.append(b);
+  return li;
+}
 
 function showTodoPanel(id) {
   $('todo-main').hidden = id !== 'todo-main';
@@ -506,9 +512,11 @@ function resetTodoSync() {
 
 // ---------- Wiring ----------
 
-$('open-todo').onclick = openTodo;
 $('todo-close').onclick = () => $('todo').close();
-$('todo').addEventListener('close', () => { if (history.state && history.state.todo) history.back(); });
+$('todo').addEventListener('close', () => {
+  if (history.state && history.state.todo) history.back();
+  render(); // the counts on the note list
+});
 $('todo-add').addEventListener('submit', e => {
   e.preventDefault();
   const text = $('todo-new').value.trim();
@@ -523,3 +531,4 @@ $('todo-import-note').onchange = previewTodoImport;
 $('todo-import-run').onclick = runTodoImport;
 $('todo-import-cancel').onclick = () => showTodoPanel('todo-main');
 $('todo').addEventListener('focusout', () => setTimeout(() => { if (todoRenderPending && !typingInTodo()) renderTodos(); }, 0));
+render(); // adds the to-do row, in case the list was drawn before this file loaded

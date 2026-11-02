@@ -26,7 +26,6 @@
   <p id="empty" class="muted" hidden></p>
   <footer class="bar side-foot">
     <button id="open-settings" class="icon" type="button" aria-label="설정" title="설정">⚙</button>
-    <button id="open-todo" class="icon" type="button" aria-label="할 일" title="할 일">☑</button>
     <button id="open-vault" class="icon" type="button" aria-label="금고" title="금고">🔒</button>
     <button id="open-trash" class="icon" type="button" aria-label="휴지통" title="휴지통">🗑</button>
   </footer>
@@ -126,7 +125,7 @@
       <section class="todo-section todo-urgent">
         <h2>긴급 <span id="todo-today-count" class="muted"></span></h2>
         <ul id="todo-today" class="todo-items"></ul>
-        <p id="todo-today-empty" class="muted small">급한 일은 항목을 눌러 '긴급으로'를 누르면 여기로 와요.</p>
+        <p id="todo-today-empty" class="muted small">급한 일은 항목을 눌러 이동에서 '긴급'을 누르면 여기로 와요.</p>
       </section>
       <section class="todo-section">
         <h2>단기 <span id="todo-short-count" class="muted"></span></h2>
@@ -139,11 +138,11 @@
         <p id="todo-long-empty" class="muted small">비어 있어요.</p>
       </section>
       <details id="todo-done" class="todo-section" hidden>
-        <summary>완료 <span id="todo-done-count" class="muted"></span></summary>
-        <p class="muted small">완료한 지 30일이 지나면 자동으로 정리돼요.</p>
+        <summary>해결 <span id="todo-done-count" class="muted"></span></summary>
+        <p class="muted small">해결한 지 30일이 지나면 자동으로 정리돼요.</p>
         <ul id="todo-done-list" class="todo-items"></ul>
       </details>
-      <p class="muted small todo-hint">항목을 누르면 완료, 메모, 마감일, 옮기기가 나와요. 오른쪽 점 여섯 개를 잡고 끌면 순서가 바뀌어요.</p>
+      <p class="muted small todo-hint">항목을 누르면 메모, 마감일, 이동(해결 포함)이 나와요. 오른쪽 점 여섯 개를 잡고 끌면 순서가 바뀌어요.</p>
     </div>
 
     <div id="todo-import" class="todo-panel" hidden>
