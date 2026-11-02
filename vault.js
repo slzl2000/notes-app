@@ -12,7 +12,7 @@ const IDLE_LOCK_MS = 5 * 60 * 1000;
 const CLIPBOARD_CLEAR_MS = 30 * 1000;
 const DRAFT_KEY = 'notes.vaultDraft';
 const BIO_KEY = 'notes.vaultBio';
-const MAX_USERNAME_CHIPS = 6;
+const MAX_USERNAME_CHIPS = 12;
 
 const getVaultRecords = () => tx('vault', 'readonly', (s, done) => { s.getAll().onsuccess = e => done(e.target.result); });
 const getVaultRecord = id => tx('vault', 'readonly', (s, done) => { s.get(id).onsuccess = e => done(e.target.result); });
