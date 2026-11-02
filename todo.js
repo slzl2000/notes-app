@@ -145,7 +145,7 @@ function fitTodoMemo(box) {
 // Redrawing replaces the row that was just tapped; some browsers then move focus to the top of
 // the screen and scroll with it, so the scroll position and the focused row are put back.
 function renderTodos() {
-  if (typingInTodo()) { todoRenderPending = true; return; }
+  if (typingInTodo() || document.body.classList.contains('todo-dragging')) { todoRenderPending = true; return; }
   todoRenderPending = false;
   const page = $('todo');
   const top = page.scrollTop;
@@ -216,9 +216,80 @@ function todoRow(item) {
     badge.textContent = due.text;
     row.append(badge);
   }
+  if (!item.done && openTodoId !== item.id) {
+    const handle = document.createElement('span');
+    handle.className = 'todo-handle';
+    handle.textContent = '≡';
+    handle.title = '끌어서 순서 바꾸기';
+    handle.setAttribute('aria-hidden', 'true'); // the ↑↓ buttons in the details do the same
+    handle.addEventListener('pointerdown', e => startTodoDrag(e, li));
+    row.append(handle);
+  }
   li.append(row);
   if (openTodoId === item.id) li.append(todoDetail(item, text));
   return li;
+}
+
+// Dragging by the handle reorders items within their own list. Only the handle starts a drag,
+// so swiping anywhere else still scrolls the page on a phone.
+function startTodoDrag(e, li) {
+  if (e.pointerType === 'mouse' && e.button !== 0) return;
+  e.preventDefault();
+  const handle = e.currentTarget;
+  const list = li.parentElement;
+  const page = $('todo');
+  const before = [...list.children].map(x => x.dataset.todo).join();
+  let y = e.clientY;
+  handle.setPointerCapture(e.pointerId);
+  li.classList.add('dragging');
+  document.body.classList.add('todo-dragging');
+
+  // The neighbours move around the dragged row, never the row itself: taking it out of the
+  // page, even for a moment, makes the browser let go of the finger or mouse.
+  const middle = x => { const r = x.getBoundingClientRect(); return r.top + r.height / 2; };
+  const place = () => {
+    for (;;) {
+      const prev = li.previousElementSibling;
+      const next = li.nextElementSibling;
+      if (next && middle(next) < y) list.insertBefore(next, li);
+      else if (prev && middle(prev) > y) list.insertBefore(prev, next);
+      else break;
+    }
+  };
+  // Near the top or bottom edge the page scrolls, so an item can travel past the screen.
+  const scroller = setInterval(() => {
+    const r = page.getBoundingClientRect();
+    if (y < r.top + 70) page.scrollTop -= 10;
+    else if (y > r.bottom - 70) page.scrollTop += 10;
+    else return;
+    place();
+  }, 16);
+  const move = ev => { y = ev.clientY; place(); };
+  let ended = false;
+  const end = () => {
+    if (ended) return;
+    ended = true;
+    clearInterval(scroller);
+    handle.removeEventListener('pointermove', move);
+    handle.removeEventListener('pointerup', end);
+    handle.removeEventListener('pointercancel', end);
+    handle.removeEventListener('lostpointercapture', end);
+    li.classList.remove('dragging');
+    document.body.classList.remove('todo-dragging');
+    const ids = [...list.children].map(x => x.dataset.todo);
+    if (ids.join() === before) { if (todoRenderPending) renderTodos(); return; }
+    changeTodos(items => {
+      const now = new Date().toISOString();
+      ids.forEach((id, order) => {
+        const item = items.find(i => i.id === id);
+        if (item && item.order !== order) Object.assign(item, { order, updated: now });
+      });
+    });
+  };
+  handle.addEventListener('pointermove', move);
+  handle.addEventListener('pointerup', end);
+  handle.addEventListener('pointercancel', end);
+  handle.addEventListener('lostpointercapture', end);
 }
 
 // Opening or closing an item only swaps rows, and the tapped item stays where it was on screen
