@@ -1,7 +1,7 @@
 'use strict';
 
 // Bump the version only when you want to change the app; otherwise it never updates itself.
-const CACHE = 'notes-v6';
+const CACHE = 'notes-v7';
 const T = 'vendor/tinymce/';
 const FILES = [
   './', 'index.html', 'style.css', 'app.js', 'vault.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png',
@@ -12,7 +12,9 @@ const FILES = [
 ];
 
 self.addEventListener('install', event => {
-  event.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)).then(() => self.skipWaiting()));
+  // Skip the browser and CDN caches, or a new version can be stored with last version's files.
+  const fresh = FILES.map(file => new Request(`${file}?v=${CACHE}`, { cache: 'reload' }));
+  event.waitUntil(caches.open(CACHE).then(c => c.addAll(fresh)).then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', event => {

@@ -1201,6 +1201,7 @@ function openSettings() {
   $('cfg-token').value = cfg ? cfg.token : '';
   $('cfg-msg').textContent = '';
   $('io-msg').textContent = '';
+  if (window.caches) caches.keys().then(keys => { $('app-version').textContent = `앱 버전: ${keys.join(', ')}`; }).catch(() => {});
   $('settings').showModal();
 }
 
@@ -1283,7 +1284,18 @@ document.addEventListener('visibilitychange', () => {
 });
 setInterval(() => { if (document.visibilityState === 'visible') syncNow(); }, 60000);
 
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
+if ('serviceWorker' in navigator) {
+  const hadController = Boolean(navigator.serviceWorker.controller);
+  let updateSeen = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!hadController || updateSeen) return;
+    updateSeen = true;
+    // Never reload under someone who is editing or inside the vault.
+    if (!currentId && !$('vault').open) location.reload();
+    else toast('새 버전이 준비됐어요. 앱을 다시 열면 적용돼요.');
+  });
+  navigator.serviceWorker.register('sw.js');
+}
 if (navigator.storage && navigator.storage.persist) navigator.storage.persist();
 
 render();
