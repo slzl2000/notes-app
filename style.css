@@ -269,6 +269,7 @@ dialog#vault {
 .vault-inner h2 { margin: 20px 0 8px; font-size: 15px; }
 #vault-msg { min-height: 20px; margin: 0; padding: 0 16px; }
 .vault-panel { padding: 8px 16px; }
+.vault-bio { width: 100%; min-height: 48px; margin-bottom: 20px; }
 .vault-panel textarea {
   display: block;
   width: 100%;

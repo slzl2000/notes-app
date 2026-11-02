@@ -210,7 +210,8 @@ const VAULT_PANELS = ['vault-setup', 'vault-unlock', 'vault-list', 'vault-form',
 function showVaultPanel(id) {
   for (const panel of VAULT_PANELS) $(panel).hidden = panel !== id;
   vaultMessage('');
-  const focus = { 'vault-setup': 'vault-new1', 'vault-unlock': 'vault-pass' }[id];
+  // With a fingerprint available, focusing the password box would only open the keyboard behind its prompt.
+  const focus = { 'vault-setup': 'vault-new1', 'vault-unlock': $('vault-bio-unlock').hidden ? 'vault-pass' : 'vault-bio-unlock' }[id];
   if (focus) $(focus).focus();
 }
 
@@ -240,6 +241,8 @@ async function openVault() {
   clearVaultInputs();
   $('vault').showModal();
   await showLockedPanel();
+  // Only here, not after locking: the lock button must not bring the prompt straight back.
+  if (!$('vault-unlock').hidden && !$('vault-bio-unlock').hidden) await unlockWithBio();
 }
 
 async function showLockedPanel() {
