@@ -248,6 +248,13 @@ async function openVault() {
   if (!$('vault-unlock').hidden && !$('vault-bio-unlock').hidden) await unlockWithBio();
 }
 
+// From a vault row in the main search: unlock, then go straight to that entry.
+let pendingEntryId = null;
+function openVaultEntry(id) {
+  pendingEntryId = id;
+  openVault();
+}
+
 async function showLockedPanel() {
   const meta = await readMeta();
   if (meta) {
@@ -293,6 +300,9 @@ async function unlockWithRawKey(raw, keyId) {
   showVaultPanel('vault-list');
   resetIdleTimer();
   await restoreDraft();
+  const pending = vaultEntries.find(e => e.id === pendingEntryId);
+  pendingEntryId = null;
+  if (pending && $('vault-form').hidden) openForm(pending);
 }
 
 async function unlockWithPassphrase(event) {
@@ -353,6 +363,7 @@ async function createVault(event) {
 // Clears the screen at once, then seals any unsaved form so the key can be dropped.
 function lockVault() {
   clearTimeout(idleTimer);
+  pendingEntryId = null;
   const key = vaultKey;
   const unsaved = key && !$('vault-form').hidden && formDirty ? { id: editingId, ...readForm() } : null;
   vaultKey = null;
@@ -406,6 +417,8 @@ async function reloadEntries() {
   vaultEntries = entries;
   vaultPatterns = patterns.sort((a, b) => a.site.localeCompare(b.site, 'ko'));
   vaultBroken = broken;
+  localStorage.setItem(VAULT_INDEX_KEY, JSON.stringify(entries.map(e => ({ id: e.id, site: e.site || '', url: e.url || '' }))));
+  render();
 }
 
 const entryName = e => e.site.trim() || (e.url || '').trim();
@@ -621,7 +634,7 @@ function renderSimilar() {
 async function saveEntry(event) {
   event.preventDefault();
   const data = readForm();
-  if (!entryName(data)) { vaultMessage('사이트명이나 주소 중 하나는 적어 주세요.', true); return; }
+  if (!entryName(data)) { vaultMessage('사이트명이나 사이트 주소 중 하나는 적어 주세요.', true); return; }
   // A new entry is checked against every entry for the site or a similar one. An edited one only
   // against the same site and ID, or each save of one of several accounts on a site would ask again.
   const sameId = e => squash(e.username) === squash(data.username);

@@ -3,6 +3,9 @@
 const $ = id => document.getElementById(id);
 const CFG_KEY = 'notes.config';
 const REPO_ID_KEY = 'notes.repoId';
+// Site names and addresses of vault entries, unencrypted and on this device only, so the main
+// search can find them while the vault is locked. IDs, passwords and memos are never in it.
+const VAULT_INDEX_KEY = 'notes.vaultIndex';
 const MAX_UPLOADS_PER_CYCLE = 50; // GitHub limits content creation to about 80 writes a minute
 const MAX_IMAGE_SIDE = 1600;
 const IMAGE_PATH = /^\.\.\/images\/([0-9a-f]+\.(?:jpg|png|gif))$/;
@@ -428,6 +431,15 @@ function appendSnippet(el, note, q) {
   );
 }
 
+function readVaultIndex() {
+  try {
+    const list = JSON.parse(localStorage.getItem(VAULT_INDEX_KEY) || '[]');
+    return Array.isArray(list) ? list : [];
+  } catch {
+    return [];
+  }
+}
+
 async function render() {
   const all = (await getAll()).filter(n => !n.deleted);
   // Blank notes stay hidden from the list unless they are the one being edited.
@@ -479,14 +491,29 @@ async function render() {
     li.append(b, star);
     return li;
   };
+  const vaultHits = q && !activeTag ? readVaultIndex().filter(e => `${e.site}\n${e.url}`.toLowerCase().includes(q)) : [];
+  const vaultRow = e => {
+    const li = document.createElement('li');
+    const b = document.createElement('button');
+    b.type = 'button';
+    const title = document.createElement('strong');
+    title.textContent = `🔒 ${e.site.trim() || e.url.trim()}`;
+    const sub = document.createElement('span');
+    sub.textContent = e.site.trim() && e.url.trim() ? e.url.trim() : '금고 항목 · 열려면 잠금 해제';
+    b.append(title, sub);
+    b.onclick = () => openVaultEntry(e.id);
+    li.append(b);
+    return li;
+  };
   $('list').replaceChildren(
     ...(favorites.length ? [label('즐겨찾기'), ...favorites.map(row)] : []),
     ...(favorites.length && others.length ? [label('노트')] : []),
     ...others.map(row),
+    ...(vaultHits.length ? [label('금고'), ...vaultHits.map(vaultRow)] : []),
   );
 
   const empty = $('empty');
-  empty.hidden = shown.length > 0;
+  empty.hidden = shown.length + vaultHits.length > 0;
   empty.textContent = q || activeTag ? '찾는 노트가 없어요.' : '아직 노트가 없어요. ＋ 버튼으로 시작하세요.';
 }
 
