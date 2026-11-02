@@ -59,7 +59,7 @@ const newId = () => Date.now().toString(36) + '-' + crypto.randomUUID().slice(0,
 
 function makeNote(body, created, updated, title = '', favorite = false) {
   const now = new Date().toISOString();
-  return { id: newId(), title, favorite, body, text: htmlToText(body), created: created || now, updated: updated || now, rev: 1, sha: null, dirty: true, deleted: false };
+  return { id: newId(), title, favorite, body, text: htmlToText(body), created: created || now, updated: updated || now, rev: 1, sha: null, dirty: true, deleted: false, trashed: '' };
 }
 
 const hasContent = n => Boolean((n.title || '').trim() || n.text.trim()) || /<img\b/i.test(n.body);
@@ -106,7 +106,7 @@ function htmlToText(html) {
 const escapeHtml = text => text.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
 function toFile(n) {
-  return `<!doctype html>\n<html>\n<head>\n<meta charset="utf-8">\n<meta name="created" content="${n.created}">\n<meta name="updated" content="${n.updated}">\n<meta name="note-title" content="${escapeHtml(n.title || '')}">\n<meta name="favorite" content="${Boolean(n.favorite)}">\n<title>${escapeHtml(titleOf(n))}</title>\n</head>\n<body>\n${n.body}\n</body>\n</html>\n`;
+  return `<!doctype html>\n<html>\n<head>\n<meta charset="utf-8">\n<meta name="created" content="${n.created}">\n<meta name="updated" content="${n.updated}">\n<meta name="note-title" content="${escapeHtml(n.title || '')}">\n<meta name="favorite" content="${Boolean(n.favorite)}">\n${n.trashed ? `<meta name="trashed" content="${n.trashed}">\n` : ''}<title>${escapeHtml(titleOf(n))}</title>\n</head>\n<body>\n${n.body}\n</body>\n</html>\n`;
 }
 
 function fromFile(text) {
@@ -117,7 +117,7 @@ function fromFile(text) {
   };
   const now = new Date().toISOString();
   const body = doc.body.innerHTML.trim();
-  return { title: meta('note-title') || '', favorite: meta('favorite') === 'true', created: meta('created') || now, updated: meta('updated') || now, body, text: htmlToText(body) };
+  return { title: meta('note-title') || '', favorite: meta('favorite') === 'true', trashed: meta('trashed') || '', created: meta('created') || now, updated: meta('updated') || now, body, text: htmlToText(body) };
 }
 
 function bytesToBase64(bytes) {
@@ -445,7 +445,7 @@ function readVaultIndex() {
 }
 
 async function render() {
-  const all = (await getAll()).filter(n => !n.deleted);
+  const all = (await getAll()).filter(n => !n.deleted && !n.trashed);
   // Blank notes stay hidden from the list unless they are the one being edited.
   const visible = all.filter(n => hasContent(n) || n.id === currentId);
   const tags = [...new Set(visible.flatMap(n => tagsOf(`${n.title || ''} ${n.text}`)))].sort((a, b) => a.localeCompare(b, 'ko'));
@@ -519,6 +519,7 @@ async function render() {
   const empty = $('empty');
   empty.hidden = shown.length + vaultHits.length > 0;
   empty.textContent = q || activeTag ? '찾는 노트가 없어요.' : '아직 노트가 없어요. ＋ 버튼으로 시작하세요.';
+  if ($('trash').open) await renderTrash();
 }
 
 function onEdit() {
@@ -661,28 +662,104 @@ async function closeEditor() {
   await render();
 }
 
+// Deleting a note moves it to the trash; only the trash removes it for good.
 async function deleteCurrent() {
+  await flushEditor();
   const id = currentId;
-  clearTimeout(saveTimer);
   hideEditor();
   const n = await getNote(id);
-  if (n && n.sha) {
-    await updateNote(id, x => { x.deleted = true; return x; });
+  if (n && !n.sha && !hasContent(n)) {
+    await removeNote(id); // a blank note that was never saved is not worth keeping
   } else if (n) {
-    await removeNote(id);
+    await setTrashed(id, true);
+    toast('휴지통으로 옮겼어요.');
   }
   if (history.state && history.state.note) history.back();
   await render();
   scheduleSync(500);
 }
 
+// Like a favorite, moving to and from the trash is not an edit, so the date stays.
+const setTrashed = (id, trashed) => updateNote(id, n => {
+  if (!n) return;
+  n.trashed = trashed ? new Date().toISOString() : '';
+  n.rev += 1;
+  n.dirty = true;
+  return n;
+});
+
+async function purgeNote(id) {
+  const n = await getNote(id);
+  if (n && n.sha) await updateNote(id, x => { x.deleted = true; return x; });
+  else if (n) await removeNote(id);
+}
+
+const trashedNotes = async () => (await getAll())
+  .filter(n => n.trashed && !n.deleted)
+  .sort((a, b) => b.trashed.localeCompare(a.trashed));
+
+async function renderTrash() {
+  const notes = await trashedNotes();
+  $('trash-title').textContent = notes.length ? `휴지통 (${notes.length})` : '휴지통';
+  $('trash-list').replaceChildren(...notes.map(n => {
+    const li = document.createElement('li');
+    const info = document.createElement('div');
+    const title = document.createElement('strong');
+    title.textContent = titleOf(n);
+    const sub = document.createElement('span');
+    const lines = n.text.split('\n').filter(l => l.trim());
+    sub.textContent = `${formatDate(n.trashed)}에 삭제  ${((n.title || '').trim() ? lines : lines.slice(1)).join(' ').slice(0, 60)}`;
+    info.append(title, sub);
+    const restore = document.createElement('button');
+    restore.type = 'button';
+    restore.textContent = '복구';
+    restore.onclick = async () => {
+      await setTrashed(n.id, false);
+      toast(`'${titleOf(n).slice(0, 20)}' 노트를 복구했어요.`);
+      await render();
+      scheduleSync(500);
+    };
+    const purge = document.createElement('button');
+    purge.type = 'button';
+    purge.className = 'text danger';
+    purge.textContent = '삭제';
+    purge.onclick = () => askPurge([n.id], `'${titleOf(n).slice(0, 40)}' 노트를 완전히 삭제할까요?`);
+    li.append(info, restore, purge);
+    return li;
+  }));
+  $('trash-empty').hidden = notes.length > 0;
+  $('trash-clear').hidden = notes.length === 0;
+}
+
+let purgeIds = [];
+function askPurge(ids, text) {
+  purgeIds = ids;
+  $('purge-text').textContent = text;
+  $('purge').showModal();
+}
+
+async function confirmPurge() {
+  $('purge').close();
+  for (const id of purgeIds) await purgeNote(id);
+  toast(purgeIds.length > 1 ? `노트 ${purgeIds.length}개를 완전히 삭제했어요.` : '노트를 완전히 삭제했어요.');
+  purgeIds = [];
+  await render();
+  scheduleSync(500);
+}
+
+async function openTrash() {
+  await renderTrash();
+  history.pushState({ trash: true }, '');
+  $('trash').showModal();
+}
+
 // Reloads the open note when a sync changed it underneath the editor.
 async function refreshEditor() {
   if (!currentId || !editor) return;
   const n = await getNote(currentId);
-  if (!n || n.deleted) {
+  if (!n || n.deleted || n.trashed) {
     hideEditor();
-    toast('열어 둔 노트가 다른 기기에서 삭제됐어요.');
+    toast(n && n.trashed ? '열어 둔 노트가 다른 기기에서 휴지통으로 옮겨졌어요.' : '열어 둔 노트가 다른 기기에서 삭제됐어요.');
   } else {
     showFavorite(n);
     if ((n.body === loadedBody && (n.title || '') === savedTitle)
@@ -1252,7 +1329,7 @@ async function importFiles(files) {
 async function exportAll() {
   await flushEditor();
   const notes = (await getAll())
-    .filter(n => !n.deleted && hasContent(n))
+    .filter(n => !n.deleted && !n.trashed && hasContent(n))
     .map(({ id, title, favorite, body, created, updated }) => ({ id, title: title || '', favorite: Boolean(favorite), body, created, updated }));
   const images = [];
   for (const image of await getAllImages()) {
@@ -1391,8 +1468,19 @@ $('cfg-clear').onclick = clearSettings;
 $('import').onclick = () => $('import-file').click();
 $('import-file').onchange = e => { const files = [...e.target.files]; e.target.value = ''; if (files.length) importFiles(files); };
 $('export').onclick = exportAll;
+$('open-trash').onclick = openTrash;
+$('trash-close').onclick = () => $('trash').close();
+$('trash').addEventListener('close', () => { if (history.state && history.state.trash) history.back(); });
+$('trash-clear').onclick = async () => {
+  const ids = (await trashedNotes()).map(n => n.id);
+  if (ids.length) askPurge(ids, `휴지통의 노트 ${ids.length}개를 모두 완전히 삭제할까요?`);
+};
+$('purge-no').onclick = () => $('purge').close();
+$('purge-yes').onclick = confirmPurge;
 
 window.addEventListener('popstate', () => {
+  if ($('purge').open) $('purge').close();
+  if ($('trash').open) { $('trash').close(); return; }
   if ($('vault').open) { vaultBack(); return; }
   if (currentId) closeEditor();
 });

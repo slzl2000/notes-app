@@ -273,6 +273,13 @@ dialog input:not([type=file]) {
 .row { display: flex; flex-wrap: wrap; gap: 8px; }
 .row.end { justify-content: flex-end; margin-top: 16px; }
 #cfg-msg:empty, #io-msg:empty { display: none; }
+#trash-list { max-height: 60dvh; margin: 0; padding: 0; overflow-y: auto; list-style: none; }
+#trash-list li { display: flex; align-items: center; gap: 6px; padding: 8px 0; border-top: 1px solid var(--line); }
+#trash-list div { flex: 1; min-width: 0; }
+#trash-list strong, #trash-list span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#trash-list strong { font-weight: 600; }
+#trash-list span { color: var(--muted); font-size: 13px; }
+#trash-list button { flex: none; padding: 0 10px; font-size: 13px; }
 
 dialog#vault {
   width: 100vw;

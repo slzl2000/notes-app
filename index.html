@@ -27,6 +27,7 @@
   <footer class="bar side-foot">
     <button id="open-settings" class="icon" type="button" aria-label="설정" title="설정">⚙</button>
     <button id="open-vault" class="icon" type="button" aria-label="금고" title="금고">🔒</button>
+    <button id="open-trash" class="icon" type="button" aria-label="휴지통" title="휴지통">🗑</button>
   </footer>
   <button id="new-note" class="fab" type="button" aria-label="새 노트">＋</button>
 </aside>
@@ -84,10 +85,31 @@
 </dialog>
 
 <dialog id="confirm">
-  <p>이 노트를 삭제할까요?</p>
+  <p>이 노트를 휴지통으로 옮길까요?</p>
+  <p class="muted small">휴지통에서 언제든 복구할 수 있어요.</p>
   <div class="row end">
     <button id="confirm-no" type="button">취소</button>
-    <button id="confirm-yes" class="primary danger-bg" type="button">삭제</button>
+    <button id="confirm-yes" class="primary danger-bg" type="button">휴지통으로</button>
+  </div>
+</dialog>
+
+<dialog id="trash" aria-label="휴지통">
+  <h2 id="trash-title">휴지통</h2>
+  <p class="muted small">복구하면 노트 목록으로 돌아가요. 휴지통에서 삭제하면 다시 복구할 수 없어요.</p>
+  <ul id="trash-list"></ul>
+  <p id="trash-empty" class="muted" hidden>휴지통이 비어 있어요.</p>
+  <div class="row end">
+    <button id="trash-clear" class="text danger" type="button">휴지통 비우기</button>
+    <button id="trash-close" type="button">닫기</button>
+  </div>
+</dialog>
+
+<dialog id="purge">
+  <p id="purge-text"></p>
+  <p class="small danger"><strong>삭제하면 다시 복구할 수 없어요.</strong></p>
+  <div class="row end">
+    <button id="purge-no" type="button">취소</button>
+    <button id="purge-yes" class="primary danger-bg" type="button">완전히 삭제</button>
   </div>
 </dialog>
 
