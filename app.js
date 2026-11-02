@@ -1246,7 +1246,7 @@ $('find-input').addEventListener('keydown', e => {
   if (e.key === 'Escape') closeFind();
 });
 $('image-file').onchange = e => { const files = [...e.target.files]; e.target.value = ''; if (files.length) insertImages(files); };
-$('sync-status').onclick = syncNow;
+$('sync-now').onclick = syncNow;
 $('open-settings').onclick = openSettings;
 $('settings-close').onclick = () => $('settings').close();
 $('settings-form').addEventListener('submit', saveSettings);
