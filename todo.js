@@ -219,7 +219,6 @@ function todoRow(item) {
   if (!item.done && openTodoId !== item.id) {
     const handle = document.createElement('span');
     handle.className = 'todo-handle';
-    handle.textContent = '≡';
     handle.title = '끌어서 순서 바꾸기';
     handle.setAttribute('aria-hidden', 'true'); // the ↑↓ buttons in the details do the same
     handle.addEventListener('pointerdown', e => startTodoDrag(e, li));

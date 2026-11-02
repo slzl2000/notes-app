@@ -322,12 +322,17 @@ dialog .todo-add select { flex: none; width: auto; margin: 0; padding: 8px 6px; 
   place-items: center;
   width: 40px;
   min-height: 44px;
-  color: var(--muted);
-  font-size: 20px;
   cursor: grab;
   touch-action: none;
   user-select: none;
   -webkit-user-select: none;
+}
+/* Six dots, two across and three down, drawn rather than typed so every phone shows the same. */
+.todo-handle::before {
+  content: '';
+  width: 12px;
+  height: 18px;
+  background: radial-gradient(circle, var(--muted) 1.7px, transparent 2.1px) 0 0 / 6px 6px;
 }
 .todo-items li.dragging { position: relative; z-index: 1; background: var(--selected); border-radius: 8px; box-shadow: 0 3px 10px rgb(0 0 0 / 25%); }
 body.todo-dragging, body.todo-dragging * { cursor: grabbing; user-select: none; -webkit-user-select: none; }
