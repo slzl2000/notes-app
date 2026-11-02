@@ -175,6 +175,35 @@ h1 { flex: 1; margin: 0; font-size: 18px; font-weight: 700; }
 #editor-box { flex: 1; min-height: 0; }
 #editor-box .tox-tinymce { height: 100% !important; border: 0; border-radius: 0; }
 #editor { visibility: hidden; }
+/* The editor's dark skin is navy; match it to the app's warm dark colours. */
+@media (prefers-color-scheme: dark) {
+  .tox .tox-editor-header,
+  .tox .tox-toolbar-overlord,
+  .tox .tox-toolbar,
+  .tox .tox-toolbar__primary,
+  .tox .tox-toolbar__overflow,
+  .tox .tox-pop__dialog,
+  .tox .tox-menu,
+  .tox .tox-dialog,
+  .tox .tox-dialog__header,
+  .tox .tox-dialog__body,
+  .tox .tox-dialog__footer,
+  .tox .tox-swatches-menu {
+    background: var(--panel) !important;
+    border-color: var(--line) !important;
+  }
+  .tox .tox-edit-area__iframe { background: var(--bg) !important; }
+  .tox .tox-tbtn--select,
+  .tox .tox-textfield,
+  .tox .tox-listbox,
+  .tox .tox-selectfield select,
+  .tox .tox-collection__item--active { background: #33312d !important; border-color: var(--line) !important; }
+  .tox .tox-tbtn:hover { background: #3a3733 !important; }
+  .tox .tox-tbtn--enabled,
+  .tox .tox-tbtn--enabled:hover { background: var(--selected) !important; }
+  .tox .tox-pop::before,
+  .tox .tox-pop::after { border-color: var(--panel) transparent transparent !important; }
+}
 .find {
   display: flex;
   align-items: center;

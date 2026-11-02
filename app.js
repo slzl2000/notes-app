@@ -194,6 +194,14 @@ let imageWork = Promise.resolve();
 
 const darkMode = () => matchMedia('(prefers-color-scheme: dark)').matches;
 
+// Black text pasted or imported from elsewhere would vanish on a dark page. This changes the
+// display only; the note keeps its original colour unless the text sits on its own background.
+const DARK_TEXT_COLORS = ['#000', '#000000', 'black', 'rgb(0, 0, 0)', 'rgb(0,0,0)', '#111', '#111111', '#222', '#222222', '#333', '#333333', 'rgb(51, 51, 51)', 'rgb(34, 34, 34)', 'rgb(17, 17, 17)'];
+const DARK_CONTENT_STYLE = `
+        html { color-scheme: dark; }
+        html, body { background: #1b1a18; color: #ece9e2; }
+        ${DARK_TEXT_COLORS.map(c => `[style*="color: ${c}"]:not([style*="background"]), [style*="color:${c}"]:not([style*="background"])`).join(', ')} { color: inherit !important; }`;
+
 function ensureEditor() {
   if (editorReady) return editorReady;
   editorReady = new Promise(resolve => {
@@ -229,7 +237,7 @@ function ensureEditor() {
         table { max-width: 100%; }
         input[type=checkbox] { width: 16px; height: 16px; margin-right: 4px; vertical-align: -2px; }
         ::highlight(note-hit) { background: #ffe08a; color: #24221e; }
-        ::highlight(note-current) { background: #f39a2d; color: #000; }`,
+        ::highlight(note-current) { background: #f39a2d; color: #000; }${darkMode() ? DARK_CONTENT_STYLE : ''}`,
       paste_preprocess: (_, args) => { args.content = stylePastedTable(args.content); },
       setup: ed => {
         ed.ui.registry.addButton('notecheck', {
