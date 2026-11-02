@@ -134,16 +134,35 @@
       <p id="vault-empty" class="muted" hidden></p>
       <div class="row">
         <button id="vault-add" class="primary" type="button">항목 추가</button>
+        <button id="vault-patterns-open" type="button">비밀번호 패턴</button>
         <button id="vault-options-open" type="button">금고 설정</button>
       </div>
     </div>
 
+    <form id="vault-patterns" class="vault-panel" autocomplete="off" hidden>
+      <h2>비밀번호 패턴</h2>
+      <p class="muted small">항목을 추가할 때 버튼으로 채운 뒤, 사이트별로 다른 부분만 고쳐 쓰세요. 비슷한 비밀번호는 하나가 유출되면 나머지도 추측당하기 쉬우니 메일, 금융, GitHub에는 쓰지 마세요.</p>
+      <ul id="vault-pattern-list"></ul>
+      <p id="vault-patterns-empty" class="muted small" hidden>아직 패턴이 없어요.</p>
+      <label>이름 (버튼에 보이는 글자)<input id="vault-pattern-label" autocomplete="off"></label>
+      <label>패턴
+        <input id="vault-pattern-value" type="password" autocomplete="new-password" autocapitalize="off" spellcheck="false">
+      </label>
+      <div class="row">
+        <button id="vault-pattern-save" class="primary" type="submit">패턴 추가</button>
+        <button id="vault-pattern-show" type="button">보기</button>
+        <button id="vault-patterns-back" type="button">돌아가기</button>
+      </div>
+    </form>
+
     <form id="vault-form" class="vault-panel" autocomplete="off" hidden>
       <label>사이트<input id="vault-site" autocomplete="off"></label>
       <label>아이디<input id="vault-username" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
+      <div id="vault-username-chips" class="chips"></div>
       <label>비밀번호
         <input id="vault-password" type="password" autocomplete="new-password" autocapitalize="off" spellcheck="false">
       </label>
+      <div id="vault-pattern-chips" class="chips"></div>
       <div class="row">
         <button id="vault-show" type="button">보기</button>
         <button id="vault-copy" type="button">복사</button>

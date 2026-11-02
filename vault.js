@@ -12,6 +12,7 @@ const IDLE_LOCK_MS = 5 * 60 * 1000;
 const CLIPBOARD_CLEAR_MS = 30 * 1000;
 const DRAFT_KEY = 'notes.vaultDraft';
 const BIO_KEY = 'notes.vaultBio';
+const MAX_USERNAME_CHIPS = 6;
 
 const getVaultRecords = () => tx('vault', 'readonly', (s, done) => { s.getAll().onsuccess = e => done(e.target.result); });
 const getVaultRecord = id => tx('vault', 'readonly', (s, done) => { s.get(id).onsuccess = e => done(e.target.result); });
@@ -197,6 +198,8 @@ async function importVaultRecords(records) {
 
 let vaultKey = null;
 let vaultEntries = [];
+let vaultPatterns = [];
+let editingPatternId = null;
 let vaultBroken = 0;
 let vaultKeyId = null;
 let editingId = null;
@@ -205,7 +208,7 @@ let idleTimer = null;
 let clipboardTimer = null;
 let vaultBusy = false;
 
-const VAULT_PANELS = ['vault-setup', 'vault-unlock', 'vault-list', 'vault-form', 'vault-options'];
+const VAULT_PANELS = ['vault-setup', 'vault-unlock', 'vault-list', 'vault-form', 'vault-options', 'vault-patterns'];
 
 function showVaultPanel(id) {
   for (const panel of VAULT_PANELS) $(panel).hidden = panel !== id;
@@ -341,11 +344,13 @@ function lockVault() {
   vaultKey = null;
   vaultKeyId = null;
   vaultEntries = [];
+  vaultPatterns = [];
+  editingPatternId = null;
   vaultBroken = 0;
   editingId = null;
   formDirty = false;
   clearVaultInputs();
-  $('vault-entries').replaceChildren();
+  for (const id of ['vault-entries', 'vault-pattern-list', 'vault-username-chips', 'vault-pattern-chips']) $(id).replaceChildren();
   if (unsaved) {
     aesEncrypt(key, new TextEncoder().encode(JSON.stringify(unsaved)))
       .then(box => localStorage.setItem(DRAFT_KEY, JSON.stringify(box)))
@@ -373,16 +378,19 @@ async function restoreDraft() {
 async function reloadEntries() {
   const records = (await getVaultRecords()).filter(r => !r.deleted && r.id !== VAULT_META);
   const entries = [];
+  const patterns = [];
   let broken = 0;
   for (const record of records) {
     try {
       const plain = await aesDecrypt(vaultKey, JSON.parse(record.data));
-      entries.push({ ...JSON.parse(new TextDecoder().decode(plain)), id: record.id });
+      const entry = { ...JSON.parse(new TextDecoder().decode(plain)), id: record.id };
+      (entry.kind === 'pattern' ? patterns : entries).push(entry);
     } catch {
       broken += 1; // kept untouched: it may belong to a key another device still has
     }
   }
   vaultEntries = entries;
+  vaultPatterns = patterns.sort((a, b) => a.site.localeCompare(b.site, 'ko'));
   vaultBroken = broken;
 }
 
@@ -432,6 +440,45 @@ function fillForm(data) {
   $('vault-username').value = data.username || '';
   $('vault-password').value = data.password || '';
   $('vault-memo').value = data.memo || '';
+  renderFormChips();
+}
+
+function chip(text, onClick) {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.textContent = text;
+  b.onclick = onClick;
+  return b;
+}
+
+// Own buttons rather than a datalist, which phone browsers show unreliably.
+function renderUsernameChips() {
+  const field = $('vault-username');
+  const typed = field.value.trim().toLowerCase();
+  const counts = new Map();
+  for (const e of vaultEntries) if (e.username) counts.set(e.username, (counts.get(e.username) || 0) + 1);
+  const names = [...counts.keys()]
+    .sort((a, b) => counts.get(b) - counts.get(a))
+    .filter(name => name !== field.value && name.toLowerCase().includes(typed))
+    .slice(0, MAX_USERNAME_CHIPS);
+  $('vault-username-chips').replaceChildren(...names.map(name => chip(name, () => {
+    field.value = name;
+    formDirty = true;
+    renderUsernameChips();
+  })));
+}
+
+function renderFormChips() {
+  renderUsernameChips();
+  $('vault-pattern-chips').replaceChildren(...vaultPatterns.map(p => chip(p.site, () => {
+    const field = $('vault-password');
+    field.value = p.password;
+    field.type = 'text'; // shown, because the point is to adjust it for this site
+    $('vault-show').textContent = '가리기';
+    formDirty = true;
+    field.focus();
+    field.setSelectionRange(field.value.length, field.value.length);
+  })));
 }
 
 function openForm(entry) {
@@ -455,12 +502,8 @@ function backToList() {
   showVaultPanel('vault-list');
 }
 
-async function saveEntry(event) {
-  event.preventDefault();
-  const data = readForm();
-  if (!data.site.trim()) { vaultMessage('사이트 이름을 적어 주세요.', true); return; }
-  const box = await aesEncrypt(vaultKey, new TextEncoder().encode(JSON.stringify({ ...data, updated: new Date().toISOString() })));
-  const id = editingId || newId();
+async function storeEntry(id, fields) {
+  const box = await aesEncrypt(vaultKey, new TextEncoder().encode(JSON.stringify({ ...fields, updated: new Date().toISOString() })));
   await updateVaultRecord(id, r => ({
     id,
     data: JSON.stringify(box),
@@ -470,9 +513,24 @@ async function saveEntry(event) {
     rev: r ? r.rev + 1 : 1,
   }));
   await reloadEntries();
+  scheduleSync(500);
+}
+
+async function removeEntry(id) {
+  const record = await getVaultRecord(id);
+  if (record && record.sha) await updateVaultRecord(id, r => { r.deleted = true; return r; });
+  else if (record) await removeVaultRecord(id);
+  await reloadEntries();
+  scheduleSync(500);
+}
+
+async function saveEntry(event) {
+  event.preventDefault();
+  const data = readForm();
+  if (!data.site.trim()) { vaultMessage('사이트 이름을 적어 주세요.', true); return; }
+  await storeEntry(editingId || newId(), data);
   backToList();
   vaultMessage('저장했어요.');
-  scheduleSync(500);
 }
 
 async function deleteEntry() {
@@ -482,13 +540,61 @@ async function deleteEntry() {
     button.textContent = '한 번 더 누르면 삭제';
     return;
   }
-  const record = await getVaultRecord(editingId);
-  if (record && record.sha) await updateVaultRecord(editingId, r => { r.deleted = true; return r; });
-  else if (record) await removeVaultRecord(editingId);
-  await reloadEntries();
+  await removeEntry(editingId);
   backToList();
   vaultMessage('삭제했어요.');
-  scheduleSync(500);
+}
+
+// ---------- Password patterns ----------
+
+function renderPatternList() {
+  $('vault-pattern-list').replaceChildren(...vaultPatterns.map(pattern => {
+    const li = document.createElement('li');
+    const open = document.createElement('button');
+    open.type = 'button';
+    open.className = 'vault-entry';
+    open.textContent = pattern.site;
+    open.onclick = () => editPattern(pattern);
+    const remove = chip('삭제', async () => {
+      if (remove.dataset.armed !== 'yes') {
+        remove.dataset.armed = 'yes';
+        remove.textContent = '한 번 더';
+        return;
+      }
+      await removeEntry(pattern.id);
+      showPatterns();
+      vaultMessage('패턴을 삭제했어요.');
+    });
+    remove.className = 'danger';
+    li.append(open, remove);
+    return li;
+  }));
+  $('vault-patterns-empty').hidden = vaultPatterns.length > 0;
+}
+
+function editPattern(pattern) {
+  editingPatternId = pattern ? pattern.id : null;
+  $('vault-pattern-label').value = pattern ? pattern.site : '';
+  $('vault-pattern-value').value = pattern ? pattern.password : '';
+  $('vault-pattern-value').type = 'password';
+  $('vault-pattern-show').textContent = '보기';
+  $('vault-pattern-save').textContent = pattern ? '패턴 수정' : '패턴 추가';
+}
+
+function showPatterns() {
+  editPattern(null);
+  renderPatternList();
+  showVaultPanel('vault-patterns');
+}
+
+async function savePattern(event) {
+  event.preventDefault();
+  const site = $('vault-pattern-label').value.trim();
+  const password = $('vault-pattern-value').value;
+  if (!site || !password) { vaultMessage('이름과 패턴을 모두 적어 주세요.', true); return; }
+  await storeEntry(editingPatternId || newId(), { kind: 'pattern', site, password });
+  showPatterns();
+  vaultMessage('패턴을 저장했어요.');
 }
 
 async function copySecret(value, label) {
@@ -621,6 +727,8 @@ async function vaultAfterSync() {
   if (!meta || meta.keyId !== vaultKeyId) { lockVault(); return; }
   await reloadEntries();
   if (!$('vault-list').hidden) renderVaultList();
+  if (!$('vault-patterns').hidden) renderPatternList();
+  if (!$('vault-form').hidden) renderFormChips();
 }
 
 // ---------- Wiring ----------
@@ -644,6 +752,15 @@ $('vault-show').onclick = () => {
   $('vault-show').textContent = field.type === 'password' ? '보기' : '가리기';
 };
 $('vault-copy').onclick = () => copySecret($('vault-password').value, '비밀번호');
+$('vault-username').addEventListener('input', renderUsernameChips);
+$('vault-patterns-open').onclick = showPatterns;
+$('vault-patterns-back').onclick = backToList;
+$('vault-patterns').addEventListener('submit', savePattern);
+$('vault-pattern-show').onclick = () => {
+  const field = $('vault-pattern-value');
+  field.type = field.type === 'password' ? 'text' : 'password';
+  $('vault-pattern-show').textContent = field.type === 'password' ? '보기' : '가리기';
+};
 $('vault-options-open').onclick = showOptions;
 $('vault-options-back').onclick = backToList;
 $('vault-change').onclick = changePassphrase;

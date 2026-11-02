@@ -269,6 +269,9 @@ dialog#vault {
 .vault-inner h2 { margin: 20px 0 8px; font-size: 15px; }
 #vault-msg { min-height: 20px; margin: 0; padding: 0 16px; }
 .vault-panel { padding: 8px 16px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin: -4px 0 12px; }
+.chips:empty { display: none; }
+.chips button { max-width: 100%; overflow: hidden; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
 .vault-bio { width: 100%; min-height: 48px; margin-bottom: 20px; }
 .vault-panel textarea {
   display: block;
@@ -282,10 +285,10 @@ dialog#vault {
   resize: vertical;
 }
 #vault-search { width: 100%; margin: 0 0 8px; }
-#vault-entries { margin: 0 0 16px; padding: 0; list-style: none; }
-#vault-entries li { display: flex; align-items: center; gap: 6px; padding: 6px 0; border-top: 1px solid var(--line); }
-#vault-entries button { flex: none; padding: 0 8px; font-size: 13px; }
-#vault-entries .vault-entry { flex: 1; min-width: 0; min-height: 48px; padding: 2px 4px; border: 0; font-size: 15px; text-align: left; }
+#vault-entries, #vault-pattern-list { margin: 0 0 16px; padding: 0; list-style: none; }
+#vault-entries li, #vault-pattern-list li { display: flex; align-items: center; gap: 6px; padding: 6px 0; border-top: 1px solid var(--line); }
+#vault-entries button, #vault-pattern-list button { flex: none; padding: 0 8px; font-size: 13px; }
+#vault-entries .vault-entry, #vault-pattern-list .vault-entry { flex: 1; min-width: 0; min-height: 48px; padding: 2px 4px; border: 0; font-size: 15px; text-align: left; }
 .vault-entry strong, .vault-entry span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .vault-entry strong { font-weight: 600; }
 .vault-entry span { color: var(--muted); font-size: 13px; }
