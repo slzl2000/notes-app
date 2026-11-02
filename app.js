@@ -207,6 +207,10 @@ const DARK_TEXT_COLORS = ['#000', '#000000', 'black', 'rgb(0, 0, 0)', 'rgb(0,0,0
 const DARK_CONTENT_STYLE = `
         html { color-scheme: dark; }
         html, body { background: #1b1a18; color: #ece9e2; }
+        /* The dark skin paints links and the box around a link being edited the same blue. */
+        a { color: #7db8ff; }
+        .mce-content-body [data-mce-selected=inline-boundary] { background: #3a3226; }
+        ::selection { background: #e29a4a; color: #1b1a18; }
         ${DARK_TEXT_COLORS.map(c => `[style*="color: ${c}"]:not([style*="background"]), [style*="color:${c}"]:not([style*="background"])`).join(', ')} { color: inherit !important; }`;
 
 function ensureEditor() {
