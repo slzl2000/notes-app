@@ -102,6 +102,7 @@ h1 { flex: 1; margin: 0; font-size: 18px; font-weight: 700; }
 }
 .tags button.on { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
 #list { flex: 1; margin: 0; padding: 0 0 88px; overflow-y: auto; list-style: none; }
+#list:empty { flex: 0; padding: 0; }
 #list button {
   display: block;
   width: 100%;
