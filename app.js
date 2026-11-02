@@ -1245,6 +1245,15 @@ $('note-title').addEventListener('keydown', e => {
   if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); editor.focus(); }
 });
 $('back').onclick = () => history.back();
+// Password managers ignore autocomplete="off" and can type a saved login into a search box, which
+// empties the list. They skip read-only fields, so these are writable only while in use.
+for (const id of ['search', 'find-input', 'vault-search']) {
+  const box = $(id);
+  const unlock = () => { box.readOnly = false; };
+  box.addEventListener('pointerdown', unlock);
+  box.addEventListener('focus', unlock);
+  box.addEventListener('blur', () => { box.readOnly = true; });
+}
 $('search').addEventListener('input', render);
 $('delete').onclick = () => $('confirm').showModal();
 $('confirm-no').onclick = () => $('confirm').close();

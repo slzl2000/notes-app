@@ -19,13 +19,15 @@
     <h1>내 노트</h1>
     <span id="sync-status" class="status" role="status"></span>
     <button id="sync-now" class="icon" type="button" aria-label="지금 동기화" title="지금 동기화">⟳</button>
-    <button id="open-vault" class="icon" type="button" aria-label="금고" title="금고">🔒</button>
-    <button id="open-settings" class="icon" type="button" aria-label="설정">⚙</button>
   </header>
-  <input id="search" type="search" placeholder="모든 노트에서 검색" aria-label="노트 검색" autocomplete="off">
+  <input id="search" type="search" placeholder="모든 노트에서 검색" aria-label="노트 검색" autocomplete="off" readonly>
   <div id="tags" class="tags"></div>
   <ul id="list"></ul>
   <p id="empty" class="muted" hidden></p>
+  <footer class="bar side-foot">
+    <button id="open-settings" class="icon" type="button" aria-label="설정" title="설정">⚙</button>
+    <button id="open-vault" class="icon" type="button" aria-label="금고" title="금고">🔒</button>
+  </footer>
   <button id="new-note" class="fab" type="button" aria-label="새 노트">＋</button>
 </aside>
 
@@ -40,7 +42,7 @@
       <button id="delete" class="text danger" type="button">삭제</button>
     </header>
     <div id="find-bar" class="find" hidden>
-      <input id="find-input" type="search" placeholder="이 노트에서 찾기" aria-label="이 노트에서 찾기" autocomplete="off">
+      <input id="find-input" type="search" placeholder="이 노트에서 찾기" aria-label="이 노트에서 찾기" autocomplete="off" readonly>
       <span id="find-count" class="muted small" role="status"></span>
       <button id="find-prev" class="icon" type="button" aria-label="이전 위치">▲</button>
       <button id="find-next" class="icon" type="button" aria-label="다음 위치">▼</button>
@@ -60,7 +62,7 @@
       <input id="cfg-repo" placeholder="내아이디/my-notes" autocomplete="off" autocapitalize="off" spellcheck="false">
     </label>
     <label>GitHub 토큰
-      <input id="cfg-token" type="password" autocomplete="off" spellcheck="false">
+      <input id="cfg-token" type="password" autocomplete="new-password" spellcheck="false">
     </label>
     <p class="muted small">토큰은 이 기기에만 저장됩니다. 노트 저장소 하나에만 권한을 준 토큰을 쓰세요.</p>
     <p id="cfg-msg" class="small" role="status"></p>
@@ -111,14 +113,14 @@
       <h2>금고 만들기</h2>
       <p class="small"><strong>금고 비밀번호를 잊으면 아무도 복구할 수 없어요.</strong> 길게 정하고 종이에 적어 안전한 곳에 보관하세요. GitHub 비밀번호나 토큰과 다르게 정하세요.</p>
       <p class="muted small">메일, 금융, GitHub 비밀번호는 여기에 넣지 말고 Bitwarden에 보관하세요.</p>
-      <label>금고 비밀번호 (10자 이상)<input id="vault-new1" type="password" autocomplete="off"></label>
-      <label>한 번 더 입력<input id="vault-new2" type="password" autocomplete="off"></label>
+      <label>금고 비밀번호 (10자 이상)<input id="vault-new1" type="password" autocomplete="new-password"></label>
+      <label>한 번 더 입력<input id="vault-new2" type="password" autocomplete="new-password"></label>
       <button class="primary" type="submit">금고 만들기</button>
     </form>
 
     <form id="vault-unlock" class="vault-panel" autocomplete="off" hidden>
       <h2>금고 열기</h2>
-      <label>금고 비밀번호<input id="vault-pass" type="password" autocomplete="off"></label>
+      <label>금고 비밀번호<input id="vault-pass" type="password" autocomplete="new-password"></label>
       <div class="row">
         <button class="primary" type="submit">열기</button>
         <button id="vault-bio-unlock" type="button" hidden>지문으로 열기</button>
@@ -126,7 +128,7 @@
     </form>
 
     <div id="vault-list" class="vault-panel" hidden>
-      <input id="vault-search" type="search" placeholder="금고에서 검색" aria-label="금고에서 검색" autocomplete="off">
+      <input id="vault-search" type="search" placeholder="금고에서 검색" aria-label="금고에서 검색" autocomplete="off" readonly>
       <p id="vault-broken" class="small danger" hidden></p>
       <ul id="vault-entries"></ul>
       <p id="vault-empty" class="muted" hidden></p>
@@ -140,7 +142,7 @@
       <label>사이트<input id="vault-site" autocomplete="off"></label>
       <label>아이디<input id="vault-username" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
       <label>비밀번호
-        <input id="vault-password" type="password" autocomplete="off" autocapitalize="off" spellcheck="false">
+        <input id="vault-password" type="password" autocomplete="new-password" autocapitalize="off" spellcheck="false">
       </label>
       <div class="row">
         <button id="vault-show" type="button">보기</button>
@@ -156,7 +158,7 @@
 
     <div id="vault-options" class="vault-panel" hidden>
       <h2>금고 설정</h2>
-      <label>현재 금고 비밀번호<input id="vault-current" type="password" autocomplete="off"></label>
+      <label>현재 금고 비밀번호<input id="vault-current" type="password" autocomplete="new-password"></label>
       <h2>이 기기의 지문 잠금 해제</h2>
       <div class="row">
         <button id="vault-bio-on" type="button">지문 켜기</button>
@@ -164,8 +166,8 @@
       </div>
       <p class="muted small">이 기기에 등록된 지문이면 누구나 금고를 열 수 있어요.</p>
       <h2>금고 비밀번호 변경</h2>
-      <label>새 비밀번호<input id="vault-change1" type="password" autocomplete="off"></label>
-      <label>한 번 더 입력<input id="vault-change2" type="password" autocomplete="off"></label>
+      <label>새 비밀번호<input id="vault-change1" type="password" autocomplete="new-password"></label>
+      <label>한 번 더 입력<input id="vault-change2" type="password" autocomplete="new-password"></label>
       <div class="row">
         <button id="vault-change" type="button">변경</button>
         <button id="vault-options-back" type="button">돌아가기</button>
