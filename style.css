@@ -271,14 +271,30 @@ dialog#vault {
 .vault-panel { padding: 8px 16px; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; margin: -4px 0 12px; }
 .chips:empty { display: none; }
-.chips button { max-width: 100%; overflow: hidden; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+/* Fill-in suggestions are rounded and filled, unlike the form's square action buttons. */
+.chips button {
+  max-width: 100%;
+  min-height: 32px;
+  padding: 0 12px;
+  overflow: hidden;
+  background: var(--selected);
+  border-color: transparent;
+  border-radius: 16px;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .chips-label { flex-basis: 100%; }
+dialog label[for] { margin-bottom: 0; }
+.field-row { display: flex; gap: 6px; margin: 4px 0 12px; }
+dialog .field-row input { flex: 1; min-width: 0; margin-top: 0; }
+.field-row button { flex: none; min-height: 0; }
 .chips a {
   max-width: 100%;
   padding: 0 12px;
   overflow: hidden;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 16px;
   color: var(--accent);
   font-size: 13px;
   line-height: 34px;

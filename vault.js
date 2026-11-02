@@ -507,6 +507,15 @@ function chip(text, onClick) {
   return b;
 }
 
+// A caption over a row of chips, so they don't read as more of the form's own buttons.
+function withLabel(text, chips) {
+  if (!chips.length) return [];
+  const label = document.createElement('span');
+  label.className = 'chips-label muted small';
+  label.textContent = text;
+  return [label, ...chips];
+}
+
 // Own buttons rather than a datalist, which phone browsers show unreliably.
 function renderUsernameChips() {
   const field = $('vault-username');
@@ -517,16 +526,16 @@ function renderUsernameChips() {
     .sort((a, b) => counts.get(b) - counts.get(a))
     .filter(name => name !== field.value && name.toLowerCase().includes(typed))
     .slice(0, MAX_USERNAME_CHIPS);
-  $('vault-username-chips').replaceChildren(...names.map(name => chip(name, () => {
+  $('vault-username-chips').replaceChildren(...withLabel('자주 쓴 아이디로 채우기', names.map(name => chip(name, () => {
     field.value = name;
     formDirty = true;
     renderUsernameChips();
-  })));
+  }))));
 }
 
 function renderFormChips() {
   renderUsernameChips();
-  $('vault-pattern-chips').replaceChildren(...vaultPatterns.map(p => chip(p.site, () => {
+  $('vault-pattern-chips').replaceChildren(...withLabel('비밀번호 패턴으로 채우기', vaultPatterns.map(p => chip(p.site, () => {
     const field = $('vault-password');
     field.value = p.password;
     field.type = 'text'; // shown, because the point is to adjust it for this site
@@ -534,7 +543,7 @@ function renderFormChips() {
     formDirty = true;
     field.focus();
     field.setSelectionRange(field.value.length, field.value.length);
-  })));
+  }))));
 }
 
 function openForm(entry) {
@@ -595,14 +604,11 @@ let duplicateConfirmed = false;
 function renderSimilar() {
   const data = readForm();
   const matches = vaultEntries.filter(e => e.id !== editingId && sameSite(e, data));
-  const label = document.createElement('span');
-  label.className = 'chips-label muted small';
-  label.textContent = '같은 사이트 항목 (누르면 열려요)';
-  $('vault-similar').replaceChildren(...(matches.length ? [label] : []), ...matches.map(e =>
+  $('vault-similar').replaceChildren(...withLabel('같은 사이트 항목 (누르면 열려요)', matches.map(e =>
     chip(e.username ? `${entryName(e)} · ${e.username}` : entryName(e), () => {
       if (editingId && formDirty) { vaultMessage('고친 내용을 먼저 저장하거나 취소해 주세요.', true); return; }
       openForm(e);
-    })));
+    }))));
 }
 
 async function saveEntry(event) {
