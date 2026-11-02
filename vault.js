@@ -514,6 +514,7 @@ function backToList() {
   editingId = null;
   formDirty = false;
   fillForm({});
+  $('vault-search').value = '';
   renderVaultList();
   showVaultPanel('vault-list');
 }
@@ -787,3 +788,9 @@ $('vault-bio-off').onclick = disableBio;
 for (const type of ['pointerdown', 'keydown', 'input']) $('vault').addEventListener(type, resetIdleTimer);
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && vaultKey) lockVault(); });
 window.addEventListener('pagehide', () => { if (vaultKey) lockVault(); });
+// On a PC, switching to another window leaves the vault open and unlocked, so the search has to reset here too.
+window.addEventListener('blur', () => {
+  if ($('vault-list').hidden || !$('vault-search').value) return;
+  $('vault-search').value = '';
+  renderVaultList();
+});
