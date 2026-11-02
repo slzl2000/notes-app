@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; manifest-src 'self'; worker-src 'self'; connect-src 'self' https://api.github.com blob: data:; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<meta name="theme-color" content="#f7f5f0" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#1b1a18" media="(prefers-color-scheme: dark)">
+<title>내 노트</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<aside id="side">
+  <header class="bar">
+    <h1>내 노트</h1>
+    <button id="sync-status" class="status" type="button" title="지금 동기화"></button>
+    <button id="open-settings" class="icon" type="button" aria-label="설정">⚙</button>
+  </header>
+  <input id="search" type="search" placeholder="모든 노트에서 검색" aria-label="노트 검색" autocomplete="off">
+  <div id="tags" class="tags"></div>
+  <ul id="list"></ul>
+  <p id="empty" class="muted" hidden></p>
+  <button id="new-note" class="fab" type="button" aria-label="새 노트">＋</button>
+</aside>
+
+<main id="main">
+  <p id="placeholder" class="muted">노트를 고르거나 새로 만드세요.</p>
+  <div id="editor-wrap" hidden>
+    <header class="bar">
+      <button id="back" class="icon" type="button" aria-label="목록으로">←</button>
+      <span id="edited" class="muted small"></span>
+      <button id="find-open" class="icon" type="button" aria-label="이 노트에서 찾기">⌕</button>
+      <button id="delete" class="text danger" type="button">삭제</button>
+    </header>
+    <div id="find-bar" class="find" hidden>
+      <input id="find-input" type="search" placeholder="이 노트에서 찾기" aria-label="이 노트에서 찾기" autocomplete="off">
+      <span id="find-count" class="muted small" role="status"></span>
+      <button id="find-prev" class="icon" type="button" aria-label="이전 위치">▲</button>
+      <button id="find-next" class="icon" type="button" aria-label="다음 위치">▼</button>
+      <button id="find-close" class="icon" type="button" aria-label="찾기 닫기">✕</button>
+    </div>
+    <div id="editor-box"><textarea id="editor" aria-label="노트 내용"></textarea></div>
+  </div>
+</main>
+
+<input id="image-file" type="file" accept="image/*" multiple hidden>
+
+<dialog id="settings">
+  <form id="settings-form">
+    <h2>동기화 설정</h2>
+    <label>노트 저장소 (비공개)
+      <input id="cfg-repo" placeholder="내아이디/my-notes" autocomplete="off" autocapitalize="off" spellcheck="false">
+    </label>
+    <label>GitHub 토큰
+      <input id="cfg-token" type="password" autocomplete="off" spellcheck="false">
+    </label>
+    <p class="muted small">토큰은 이 기기에만 저장됩니다. 노트 저장소 하나에만 권한을 준 토큰을 쓰세요.</p>
+    <p id="cfg-msg" class="small" role="status"></p>
+    <div class="row">
+      <button id="cfg-save" class="primary" type="submit">연결</button>
+      <button id="cfg-clear" class="text danger" type="button">연결 해제</button>
+    </div>
+    <h2>가져오기 · 내보내기</h2>
+    <div class="row">
+      <button id="import" type="button">가져오기 (.enex, .json)</button>
+      <button id="export" type="button">전체 내보내기</button>
+    </div>
+    <input id="import-file" type="file" accept=".enex,.json" multiple hidden>
+    <p id="io-msg" class="small" role="status"></p>
+    <div class="row end"><button id="settings-close" type="button">닫기</button></div>
+  </form>
+</dialog>
+
+<dialog id="confirm">
+  <p>이 노트를 삭제할까요?</p>
+  <div class="row end">
+    <button id="confirm-no" type="button">취소</button>
+    <button id="confirm-yes" class="primary danger-bg" type="button">삭제</button>
+  </div>
+</dialog>
+
+<dialog id="vanish">
+  <h2>동기화를 멈췄어요</h2>
+  <p>이 기기의 노트 <strong id="vanish-count"></strong>개가 저장소에서 보이지 않아요. 아무것도 지우지 않았어요.</p>
+  <p class="muted small">다른 기기에서 직접 지운 게 아니라면 저장소로 복원하세요.</p>
+  <div class="row end">
+    <button id="vanish-delete" class="text danger" type="button">이 기기에서도 삭제</button>
+    <button id="vanish-restore" class="primary" type="button">저장소로 복원</button>
+  </div>
+</dialog>
+
+<div id="toast" role="status" hidden></div>
+<script src="vendor/tinymce/tinymce.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
