@@ -9,6 +9,8 @@
   --accent-text: #ffffff;
   --selected: #f1e7d6;
   --danger: #b3321f;
+  --urgent: #a83a2a;
+  --urgent-bg: rgb(168 58 42 / 6%);
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -21,6 +23,8 @@
     --accent-text: #1b1a18;
     --selected: #3a3226;
     --danger: #ef8571;
+    --urgent: #c8704e;
+    --urgent-bg: rgb(200 112 78 / 9%);
   }
 }
 * { box-sizing: border-box; }
@@ -314,6 +318,12 @@ dialog .todo-add select { flex: none; width: auto; margin: 0; padding: 8px 6px; 
   border-radius: 50%;
 }
 .done .todo-mark { background: var(--line); }
+/* How pressing each list is: urgent stands out a little, long-term steps back. */
+.todo-urgent { margin-top: 16px; padding: 2px 12px 6px; background: var(--urgent-bg); border-left: 3px solid var(--urgent); border-radius: 8px; }
+.todo-urgent h2 { margin-top: 10px; }
+#todo-today .todo-mark { background: var(--urgent); }
+#todo-long .todo-mark { background: var(--muted); }
+#todo-long .todo-text strong { color: var(--muted); }
 #todo-main:focus { outline: 0; }
 .todo-close { margin-bottom: 12px; }
 .todo-handle {
