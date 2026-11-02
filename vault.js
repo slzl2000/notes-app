@@ -599,12 +599,19 @@ const hostOf = u => squash(u).replace(/^[a-z]+:\/\//, '').replace(/^www\./, '').
 // "naver.com" typed as the site name matches https://www.naver.com/login typed as the address.
 const siteKeys = e => new Set([squash(e.site), hostOf(e.site), hostOf(e.url)].filter(Boolean));
 const sameSite = (a, b) => { const keys = siteKeys(b); return [...siteKeys(a)].some(k => keys.has(k)); };
+// Looser: 우체국 is like 부평우체국, and mail.naver.com like naver.com.
+const hostKeys = e => [hostOf(e.url), e.site.includes('.') ? hostOf(e.site) : ''].filter(Boolean);
+function similarSite(a, b) {
+  const [x, y] = [squash(a.site), squash(b.site)];
+  if (x && y && Math.min(x.length, y.length) >= 2 && (x.includes(y) || y.includes(x))) return true;
+  return hostKeys(a).some(h => hostKeys(b).some(g => h === g || h.endsWith(`.${g}`) || g.endsWith(`.${h}`)));
+}
 let duplicateConfirmed = false;
 
 function renderSimilar() {
   const data = readForm();
-  const matches = vaultEntries.filter(e => e.id !== editingId && sameSite(e, data));
-  $('vault-similar').replaceChildren(...withLabel('같은 사이트 항목 (누르면 열려요)', matches.map(e =>
+  const matches = vaultEntries.filter(e => e.id !== editingId && (sameSite(e, data) || similarSite(e, data)));
+  $('vault-similar').replaceChildren(...withLabel('같거나 비슷한 사이트 항목 (누르면 열려요)', matches.map(e =>
     chip(e.username ? `${entryName(e)} · ${e.username}` : entryName(e), () => {
       if (editingId && formDirty) { vaultMessage('고친 내용을 먼저 저장하거나 취소해 주세요.', true); return; }
       openForm(e);
@@ -615,16 +622,20 @@ async function saveEntry(event) {
   event.preventDefault();
   const data = readForm();
   if (!entryName(data)) { vaultMessage('사이트명이나 주소 중 하나는 적어 주세요.', true); return; }
-  // A new entry is checked against every entry for the site. An edited one only against the same ID,
-  // or each save of one of several accounts on a site would ask again.
+  // A new entry is checked against every entry for the site or a similar one. An edited one only
+  // against the same site and ID, or each save of one of several accounts on a site would ask again.
   const sameId = e => squash(e.username) === squash(data.username);
   const others = vaultEntries.filter(e => e.id !== editingId && sameSite(e, data));
-  const duplicate = others.find(sameId) || (editingId ? null : others[0]);
+  const similar = editingId ? [] : vaultEntries.filter(e => e.id !== editingId && similarSite(e, data));
+  const duplicate = others.find(sameId) || (editingId ? null : others[0] || similar[0]);
   if (duplicate && !duplicateConfirmed) {
     duplicateConfirmed = true;
-    vaultMessage(sameId(duplicate)
-      ? `'${entryName(duplicate)}'에 같은 아이디 항목이 이미 있어요. 그래도 따로 저장하려면 저장을 한 번 더 누르세요.`
-      : `'${entryName(duplicate)}' 항목이 이미 있어요. 다른 계정이라면 저장을 한 번 더 누르세요.`, true);
+    const name = entryName(duplicate);
+    vaultMessage(!others.includes(duplicate)
+      ? `비슷한 '${name}' 항목이 있어요. 다른 곳이라면 저장을 한 번 더 누르세요.`
+      : sameId(duplicate)
+        ? `'${name}'에 같은 아이디 항목이 이미 있어요. 그래도 따로 저장하려면 저장을 한 번 더 누르세요.`
+        : `'${name}' 항목이 이미 있어요. 다른 계정이라면 저장을 한 번 더 누르세요.`, true);
     $('vault').scrollTop = 0;
     return;
   }
