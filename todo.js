@@ -59,11 +59,12 @@ function editTodo(id, fields, quiet) {
 }
 
 const liveIn = (items, list) => items.filter(i => !i.deleted && !i.done && i.list === list).sort(byOrder);
-const nextOrder = (items, list) => Math.max(0, ...liveIn(items, list).map(i => i.order)) + 1;
+// New and moved items go on top, where the latest one is easy to find.
+const topOrder = (items, list) => Math.min(1, ...liveIn(items, list).map(i => i.order)) - 1;
 
 function newTodo(items, text, list, done) {
   const now = new Date().toISOString();
-  return { id: newId(), text, memo: '', list, due: '', done: done ? now : '', deleted: '', order: nextOrder(items, list), created: now, updated: now };
+  return { id: newId(), text, memo: '', list, due: '', done: done ? now : '', deleted: '', order: topOrder(items, list), created: now, updated: now };
 }
 
 function addTodo(text, list) {
@@ -74,7 +75,7 @@ function moveTodo(id, list) {
   changeTodos(items => {
     const item = items.find(i => i.id === id);
     if (!item) return;
-    Object.assign(item, { list, order: nextOrder(items, list), updated: new Date().toISOString() });
+    Object.assign(item, { list, order: topOrder(items, list), updated: new Date().toISOString() });
   });
   toast(`${toListLabel(TODO_LISTS.find(([key]) => key === list)[1])} 옮겼어요.`);
 }
@@ -193,7 +194,6 @@ function todoRow(item) {
   const mark = document.createElement('span');
   mark.className = 'todo-mark';
   mark.setAttribute('aria-hidden', 'true');
-  mark.textContent = item.done ? '✓' : '';
   const label = document.createElement('button');
   label.type = 'button';
   label.className = 'todo-text';
@@ -276,15 +276,17 @@ function todoDetail(item, titleEl) {
   due.onchange = () => editTodo(item.id, { due: due.value }, true);
   box.append(field('할 일', text), field('메모', memo), field('마감일 (없어도 돼요)', due));
 
-  const finish = document.createElement('div');
-  finish.className = 'row todo-finish';
-  finish.append(item.done
-    ? todoButton('완료 취소', () => finishTodo(item.id, false))
-    : todoButton('✓ 완료', () => finishTodo(item.id, true), 'primary'));
-  box.append(finish);
+  // Edits are saved as they are typed; this only folds the item away again.
+  const close = document.createElement('div');
+  close.className = 'row todo-close';
+  close.append(todoButton('작성 완료', () => toggleTodoDetail(item.id), 'primary'));
+  box.append(close);
 
   const actions = document.createElement('div');
   actions.className = 'row';
+  actions.append(item.done
+    ? todoButton('완료 취소', () => finishTodo(item.id, false))
+    : todoButton('완료로 이동', () => finishTodo(item.id, true)));
   if (!item.done) {
     for (const [list, name] of TODO_LISTS) {
       if (list !== item.list) actions.append(todoButton(toListLabel(name), () => moveTodo(item.id, list)));
@@ -346,7 +348,8 @@ function runTodoImport() {
   let skipped = 0;
   changeTodos(items => {
     const existing = new Set(items.filter(i => !i.deleted).map(i => i.text));
-    for (const line of todoLinesOf(note)) {
+    // Each new item goes on top, so lines are added last first to keep the note's order.
+    for (const line of todoLinesOf(note).reverse()) {
       if (existing.has(line.text)) { skipped += 1; continue; }
       items.push(newTodo(items, line.text, list, line.done));
       existing.add(line.text);
