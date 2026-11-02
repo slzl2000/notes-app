@@ -271,6 +271,20 @@ function closeVault() {
   if ($('vault').open) $('vault').close();
 }
 
+// The phone's back gesture, the ← button and Esc all land here. From an entry, a pattern or the
+// settings they return to the list; only from the list do they close and lock the vault.
+function vaultBack() {
+  const inSubpanel = vaultKey && ['vault-form', 'vault-patterns', 'vault-options'].some(id => !$(id).hidden);
+  if (!inSubpanel) { closeVault(); return; }
+  // The browser has already stepped back, so put the vault's history entry back.
+  history.pushState({ vault: true, note: Boolean(history.state && history.state.note) }, '');
+  if (!$('vault-form').hidden && formDirty) {
+    vaultMessage('저장하지 않은 내용이 있어요. 저장하거나 취소를 눌러 주세요.', true);
+    return;
+  }
+  backToList();
+}
+
 async function unlockWithRawKey(raw, keyId) {
   vaultKey = await importVaultKey(raw);
   vaultKeyId = keyId;

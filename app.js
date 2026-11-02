@@ -1324,7 +1324,7 @@ $('import-file').onchange = e => { const files = [...e.target.files]; e.target.v
 $('export').onclick = exportAll;
 
 window.addEventListener('popstate', () => {
-  if ($('vault').open) { closeVault(); return; }
+  if ($('vault').open) { vaultBack(); return; }
   if (currentId) closeEditor();
 });
 window.addEventListener('online', syncNow);
