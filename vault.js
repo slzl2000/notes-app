@@ -1,0 +1,651 @@
+'use strict';
+
+// The vault keeps each entry in its own AES-GCM encrypted file under vault/ in the repository.
+// A random vault key encrypts the entries; the passphrase (and optionally a fingerprint) only
+// encrypts that key. Sync moves ciphertext alone, so it works while the vault is locked.
+
+const VAULT_META = 'meta';
+const KDF_ITERATIONS = 600000;
+const MIN_KDF_ITERATIONS = 300000;
+const MIN_PASSPHRASE = 10;
+const IDLE_LOCK_MS = 5 * 60 * 1000;
+const CLIPBOARD_CLEAR_MS = 30 * 1000;
+const DRAFT_KEY = 'notes.vaultDraft';
+const BIO_KEY = 'notes.vaultBio';
+
+const getVaultRecords = () => tx('vault', 'readonly', (s, done) => { s.getAll().onsuccess = e => done(e.target.result); });
+const getVaultRecord = id => tx('vault', 'readonly', (s, done) => { s.get(id).onsuccess = e => done(e.target.result); });
+const removeVaultRecord = id => tx('vault', 'readwrite', s => { s.delete(id); });
+const updateVaultRecord = (id, change) => tx('vault', 'readwrite', (s, done) => {
+  s.get(id).onsuccess = e => {
+    const next = change(e.target.result);
+    if (next) s.put(next);
+    done(next);
+  };
+});
+
+// ---------- Encryption ----------
+
+const randomBytes = n => crypto.getRandomValues(new Uint8Array(n));
+
+async function aesEncrypt(key, plainBytes) {
+  const iv = randomBytes(12);
+  const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, plainBytes);
+  return { iv: bytesToBase64(iv), ct: bytesToBase64(new Uint8Array(ct)) };
+}
+
+async function aesDecrypt(key, box) {
+  const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: base64ToBytes(box.iv) }, key, base64ToBytes(box.ct));
+  return new Uint8Array(plain);
+}
+
+async function passphraseKey(passphrase, salt, iterations) {
+  const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(passphrase.normalize('NFC')), 'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey(
+    { name: 'PBKDF2', hash: 'SHA-256', salt, iterations },
+    base,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['encrypt', 'decrypt'],
+  );
+}
+
+const importVaultKey = raw => crypto.subtle.importKey('raw', raw, 'AES-GCM', false, ['encrypt', 'decrypt']);
+
+async function buildMeta(rawKey, passphrase, keyId) {
+  const salt = randomBytes(16);
+  const wrapped = await aesEncrypt(await passphraseKey(passphrase, salt, KDF_ITERATIONS), rawKey);
+  return { v: 1, keyId, kdf: { name: 'PBKDF2-SHA256', iterations: KDF_ITERATIONS, salt: bytesToBase64(salt) }, key: wrapped };
+}
+
+async function readMeta() {
+  const record = await getVaultRecord(VAULT_META);
+  if (!record || record.deleted) return null;
+  return JSON.parse(record.data);
+}
+
+// Rejects a weakened meta file, which someone with write access to the repository could plant.
+async function rawKeyFromPassphrase(meta, passphrase) {
+  if (meta.kdf.name !== 'PBKDF2-SHA256' || !(meta.kdf.iterations >= MIN_KDF_ITERATIONS)) throw new Error('weak-meta');
+  const kek = await passphraseKey(passphrase, base64ToBytes(meta.kdf.salt), meta.kdf.iterations);
+  return aesDecrypt(kek, meta.key);
+}
+
+// ---------- Sync (ciphertext only) ----------
+
+async function readRemoteVaultFile(cfg, sha) {
+  return fromBase64((await api(cfg, `/repos/${cfg.repo}/git/blobs/${sha}`)).content);
+}
+
+async function uploadVaultRecord(cfg, record, sha) {
+  const res = await api(cfg, `/repos/${cfg.repo}/contents/vault/${record.id}.json`, {
+    method: 'PUT',
+    body: JSON.stringify({ message: '금고 갱신', content: toBase64(record.data), ...(sha ? { sha } : {}) }),
+  });
+  await updateVaultRecord(record.id, r => {
+    if (!r) return;
+    r.sha = res.content.sha;
+    r.dirty = r.rev !== record.rev;
+    return r;
+  });
+}
+
+async function resetVaultSync() {
+  for (const record of await getVaultRecords()) {
+    if (record.deleted) await removeVaultRecord(record.id);
+    else await updateVaultRecord(record.id, r => { r.sha = null; r.dirty = true; return r; });
+  }
+}
+
+let vaultSyncChanged = false;
+
+async function downloadVaultRecord(cfg, id, sha) {
+  const data = await readRemoteVaultFile(cfg, sha);
+  await updateVaultRecord(id, r => {
+    if (r && r.dirty && !r.deleted && id !== VAULT_META) return; // edited meanwhile; the next cycle handles it
+    return { id, data, sha, dirty: false, deleted: false, rev: r ? r.rev + 1 : 1 };
+  });
+  vaultSyncChanged = true;
+}
+
+// Returns how many writes it used; stops at budget and reports the rest through the return value.
+async function syncVault(cfg, remote, budget) {
+  let locals = await getVaultRecords();
+  const tracked = locals.filter(r => r.sha && !r.deleted);
+  const vanished = tracked.filter(r => !r.dirty && !remote.has(r.id));
+  const meta = locals.find(r => r.id === VAULT_META);
+  const metaLost = meta && meta.sha && !remote.has(VAULT_META);
+
+  // Entries disappearing in bulk look like an accident, so restore them instead of deleting.
+  if (metaLost || (vanished.length >= 3 && vanished.length >= tracked.length * 0.3)) {
+    for (const r of vanished) await updateVaultRecord(r.id, x => { x.sha = null; x.dirty = true; return x; });
+    locals = await getVaultRecords();
+  }
+
+  const known = new Set(locals.map(r => r.id));
+  for (const [id, sha] of remote) {
+    if (!known.has(id)) await downloadVaultRecord(cfg, id, sha);
+  }
+
+  let writes = 0;
+  let more = false;
+  for (const record of locals) {
+    const remoteSha = remote.get(record.id);
+    if (record.deleted) {
+      if (!remoteSha) await removeVaultRecord(record.id);
+      else if (remoteSha === record.sha) {
+        await api(cfg, `/repos/${cfg.repo}/contents/vault/${record.id}.json`, {
+          method: 'DELETE',
+          body: JSON.stringify({ message: '금고 갱신', sha: remoteSha }),
+        });
+        await removeVaultRecord(record.id);
+        vaultSyncChanged = true;
+      } else {
+        await downloadVaultRecord(cfg, record.id, remoteSha); // edited elsewhere after deletion: the edit wins
+      }
+      continue;
+    }
+
+    if (remoteSha && remoteSha !== record.sha) {
+      if (record.dirty && record.id !== VAULT_META) {
+        const theirs = await readRemoteVaultFile(cfg, remoteSha);
+        if (theirs !== record.data) {
+          // Changed on both sides: keep this device's version as a separate entry.
+          const copy = { id: newId(), data: record.data, sha: null, dirty: true, deleted: false, rev: 1 };
+          await updateVaultRecord(copy.id, () => copy);
+          syncAgain = true;
+        }
+        await updateVaultRecord(record.id, r => { r.dirty = false; return r; });
+      }
+      await downloadVaultRecord(cfg, record.id, remoteSha);
+    } else if (!remoteSha && record.sha && !record.dirty) {
+      await removeVaultRecord(record.id); // deleted on another device
+      vaultSyncChanged = true;
+    } else if (record.dirty) {
+      if (writes >= budget) { more = true; continue; }
+      await uploadVaultRecord(cfg, record, remoteSha ? record.sha : null);
+      writes += 1;
+    }
+  }
+  return { writes, more };
+}
+
+// ---------- Backup (ciphertext only) ----------
+
+async function exportVaultRecords() {
+  return (await getVaultRecords()).filter(r => !r.deleted).map(({ id, data }) => ({ id, data }));
+}
+
+// Returns a message when the backup could not be restored.
+async function importVaultRecords(records) {
+  if (!Array.isArray(records) || !records.length) return '';
+  const metaRecord = records.find(r => r.id === VAULT_META);
+  const localMeta = await readMeta();
+  if (localMeta) {
+    let backupKeyId = null;
+    try { backupKeyId = metaRecord && JSON.parse(metaRecord.data).keyId; } catch { /* unreadable */ }
+    if (backupKeyId !== localMeta.keyId) return ' 다른 금고의 백업이라 금고 항목은 가져오지 않았어요.';
+  }
+  for (const record of records) {
+    if (typeof record.data !== 'string' || !/^[\w-]+$/.test(record.id)) continue;
+    await updateVaultRecord(record.id, r => (r ? undefined : { id: record.id, data: record.data, sha: null, dirty: true, deleted: false, rev: 1 }));
+  }
+  return '';
+}
+
+// ---------- State ----------
+
+let vaultKey = null;
+let vaultEntries = [];
+let vaultBroken = 0;
+let vaultKeyId = null;
+let editingId = null;
+let formDirty = false;
+let idleTimer = null;
+let clipboardTimer = null;
+let vaultBusy = false;
+
+const VAULT_PANELS = ['vault-setup', 'vault-unlock', 'vault-list', 'vault-form', 'vault-options'];
+
+function showVaultPanel(id) {
+  for (const panel of VAULT_PANELS) $(panel).hidden = panel !== id;
+  vaultMessage('');
+  const focus = { 'vault-setup': 'vault-new1', 'vault-unlock': 'vault-pass' }[id];
+  if (focus) $(focus).focus();
+}
+
+function vaultMessage(text, isError) {
+  const el = $('vault-msg');
+  el.textContent = text;
+  el.classList.toggle('danger', Boolean(isError));
+}
+
+function clearVaultInputs() {
+  for (const input of $('vault').querySelectorAll('input, textarea')) input.value = '';
+  $('vault-password').type = 'password';
+  $('vault-show').textContent = '보기';
+}
+
+function resetIdleTimer() {
+  clearTimeout(idleTimer);
+  if (vaultKey) idleTimer = setTimeout(lockVault, IDLE_LOCK_MS);
+}
+
+// ---------- Open, unlock, lock ----------
+
+async function openVault() {
+  if ($('vault').open) return;
+  await flushEditor();
+  history.pushState({ vault: true, note: Boolean(history.state && history.state.note) }, '');
+  clearVaultInputs();
+  $('vault').showModal();
+  await showLockedPanel();
+}
+
+async function showLockedPanel() {
+  const meta = await readMeta();
+  if (meta) {
+    const bio = readBio();
+    $('vault-bio-unlock').hidden = !(bio && bio.keyId === meta.keyId);
+    showVaultPanel('vault-unlock');
+    return;
+  }
+  showVaultPanel('vault-setup');
+  // Syncing first prevents a second vault key when one already exists on another device.
+  if (loadConfig()) {
+    vaultMessage('다른 기기의 금고가 있는지 확인하는 중…');
+    await syncNow();
+    if (await readMeta()) { await showLockedPanel(); return; }
+    vaultMessage('');
+  }
+}
+
+function closeVault() {
+  lockVault();
+  if ($('vault').open) $('vault').close();
+}
+
+async function unlockWithRawKey(raw, keyId) {
+  vaultKey = await importVaultKey(raw);
+  vaultKeyId = keyId;
+  await reloadEntries();
+  renderVaultList();
+  showVaultPanel('vault-list');
+  resetIdleTimer();
+  await restoreDraft();
+}
+
+async function unlockWithPassphrase(event) {
+  event.preventDefault();
+  if (vaultBusy) return;
+  const pass = $('vault-pass').value;
+  const meta = await readMeta();
+  if (!meta || !pass) return;
+  vaultBusy = true;
+  vaultMessage('여는 중…');
+  try {
+    const raw = await rawKeyFromPassphrase(meta, pass);
+    $('vault-pass').value = '';
+    await unlockWithRawKey(raw, meta.keyId);
+  } catch (e) {
+    vaultMessage(e.message === 'weak-meta' ? '금고 정보가 변조됐을 수 있어 열지 않았어요.' : '금고 비밀번호가 맞지 않아요.', true);
+  } finally {
+    vaultBusy = false;
+  }
+}
+
+async function createVault(event) {
+  event.preventDefault();
+  if (vaultBusy) return;
+  const pass = $('vault-new1').value;
+  if (pass.length < MIN_PASSPHRASE) { vaultMessage(`금고 비밀번호는 ${MIN_PASSPHRASE}자 이상으로 정하세요.`, true); return; }
+  if (pass !== $('vault-new2').value) { vaultMessage('두 비밀번호가 달라요.', true); return; }
+  vaultBusy = true;
+  vaultMessage('금고를 만드는 중…');
+  try {
+    // Only create against a confirmed view of the repository; offline could split the vault in two.
+    if (loadConfig()) {
+      const cfg = loadConfig();
+      if (!navigator.onLine) throw new Error('offline');
+      const repo = await readRepo(cfg);
+      const tree = await readTree(cfg, repo);
+      if (tree.vault.has(VAULT_META)) {
+        await syncNow();
+        vaultBusy = false;
+        await showLockedPanel();
+        return;
+      }
+    }
+    const raw = randomBytes(32);
+    const keyId = bytesToBase64(randomBytes(9));
+    const meta = await buildMeta(raw, pass, keyId);
+    await updateVaultRecord(VAULT_META, () => ({ id: VAULT_META, data: JSON.stringify(meta), sha: null, dirty: true, deleted: false, rev: 1 }));
+    clearVaultInputs();
+    await unlockWithRawKey(raw, keyId);
+    syncNow();
+  } catch (e) {
+    vaultMessage(e.message === 'offline' ? '다른 기기의 금고를 확인해야 해서, 금고는 인터넷에 연결된 상태에서 만들어 주세요.' : '금고를 만들지 못했어요. 인터넷과 연결 설정을 확인하세요.', true);
+  } finally {
+    vaultBusy = false;
+  }
+}
+
+// Clears the screen at once, then seals any unsaved form so the key can be dropped.
+function lockVault() {
+  clearTimeout(idleTimer);
+  const key = vaultKey;
+  const unsaved = key && !$('vault-form').hidden && formDirty ? { id: editingId, ...readForm() } : null;
+  vaultKey = null;
+  vaultKeyId = null;
+  vaultEntries = [];
+  vaultBroken = 0;
+  editingId = null;
+  formDirty = false;
+  clearVaultInputs();
+  $('vault-entries').replaceChildren();
+  if (unsaved) {
+    aesEncrypt(key, new TextEncoder().encode(JSON.stringify(unsaved)))
+      .then(box => localStorage.setItem(DRAFT_KEY, JSON.stringify(box)))
+      .catch(() => {});
+  }
+  if ($('vault').open) showLockedPanel();
+}
+
+async function restoreDraft() {
+  const stored = localStorage.getItem(DRAFT_KEY);
+  if (!stored) return;
+  localStorage.removeItem(DRAFT_KEY);
+  try {
+    const draft = JSON.parse(new TextDecoder().decode(await aesDecrypt(vaultKey, JSON.parse(stored))));
+    openForm(draft.id ? vaultEntries.find(e => e.id === draft.id) || null : null);
+    editingId = draft.id;
+    fillForm(draft);
+    formDirty = true;
+    vaultMessage('작성 중이던 내용을 복원했어요.');
+  } catch { /* sealed with another key */ }
+}
+
+// ---------- Entries ----------
+
+async function reloadEntries() {
+  const records = (await getVaultRecords()).filter(r => !r.deleted && r.id !== VAULT_META);
+  const entries = [];
+  let broken = 0;
+  for (const record of records) {
+    try {
+      const plain = await aesDecrypt(vaultKey, JSON.parse(record.data));
+      entries.push({ ...JSON.parse(new TextDecoder().decode(plain)), id: record.id });
+    } catch {
+      broken += 1; // kept untouched: it may belong to a key another device still has
+    }
+  }
+  vaultEntries = entries;
+  vaultBroken = broken;
+}
+
+function renderVaultList() {
+  const q = $('vault-search').value.trim().toLowerCase();
+  const shown = vaultEntries
+    .filter(e => !q || `${e.site}\n${e.username}\n${e.memo}`.toLowerCase().includes(q))
+    .sort((a, b) => a.site.localeCompare(b.site, 'ko'));
+  $('vault-entries').replaceChildren(...shown.map(entry => {
+    const li = document.createElement('li');
+    const open = document.createElement('button');
+    open.type = 'button';
+    open.className = 'vault-entry';
+    const site = document.createElement('strong');
+    site.textContent = entry.site || '(이름 없음)';
+    const user = document.createElement('span');
+    user.textContent = entry.username;
+    open.append(site, user);
+    open.onclick = () => openForm(entry);
+    const copyUser = document.createElement('button');
+    copyUser.type = 'button';
+    copyUser.textContent = '아이디';
+    copyUser.onclick = () => copySecret(entry.username, '아이디');
+    const copyPass = document.createElement('button');
+    copyPass.type = 'button';
+    copyPass.textContent = '비번';
+    copyPass.onclick = () => copySecret(entry.password, '비밀번호');
+    li.append(open, copyUser, copyPass);
+    return li;
+  }));
+  const empty = $('vault-empty');
+  empty.hidden = shown.length > 0;
+  empty.textContent = q ? '찾는 항목이 없어요.' : '아직 항목이 없어요. 먼저 가짜 항목으로 시험해 보세요.';
+  $('vault-broken').hidden = vaultBroken === 0;
+  $('vault-broken').textContent = `열 수 없는 항목이 ${vaultBroken}개 있어요. 지우지 않고 보관 중이에요.`;
+}
+
+const readForm = () => ({
+  site: $('vault-site').value,
+  username: $('vault-username').value,
+  password: $('vault-password').value,
+  memo: $('vault-memo').value,
+});
+
+function fillForm(data) {
+  $('vault-site').value = data.site || '';
+  $('vault-username').value = data.username || '';
+  $('vault-password').value = data.password || '';
+  $('vault-memo').value = data.memo || '';
+}
+
+function openForm(entry) {
+  editingId = entry ? entry.id : null;
+  formDirty = false;
+  fillForm(entry || {});
+  $('vault-password').type = 'password';
+  $('vault-show').textContent = '보기';
+  $('vault-delete').hidden = !entry;
+  $('vault-delete').textContent = '삭제';
+  $('vault-delete').dataset.armed = '';
+  showVaultPanel('vault-form');
+  if (!entry) $('vault-site').focus();
+}
+
+function backToList() {
+  editingId = null;
+  formDirty = false;
+  fillForm({});
+  renderVaultList();
+  showVaultPanel('vault-list');
+}
+
+async function saveEntry(event) {
+  event.preventDefault();
+  const data = readForm();
+  if (!data.site.trim()) { vaultMessage('사이트 이름을 적어 주세요.', true); return; }
+  const box = await aesEncrypt(vaultKey, new TextEncoder().encode(JSON.stringify({ ...data, updated: new Date().toISOString() })));
+  const id = editingId || newId();
+  await updateVaultRecord(id, r => ({
+    id,
+    data: JSON.stringify(box),
+    sha: r ? r.sha : null,
+    dirty: true,
+    deleted: false,
+    rev: r ? r.rev + 1 : 1,
+  }));
+  await reloadEntries();
+  backToList();
+  vaultMessage('저장했어요.');
+  scheduleSync(500);
+}
+
+async function deleteEntry() {
+  const button = $('vault-delete');
+  if (button.dataset.armed !== 'yes') {
+    button.dataset.armed = 'yes';
+    button.textContent = '한 번 더 누르면 삭제';
+    return;
+  }
+  const record = await getVaultRecord(editingId);
+  if (record && record.sha) await updateVaultRecord(editingId, r => { r.deleted = true; return r; });
+  else if (record) await removeVaultRecord(editingId);
+  await reloadEntries();
+  backToList();
+  vaultMessage('삭제했어요.');
+  scheduleSync(500);
+}
+
+async function copySecret(value, label) {
+  try {
+    await navigator.clipboard.writeText(value);
+    vaultMessage(`${label}를 복사했어요. 30초 뒤 클립보드를 비우려고 시도해요.`);
+    clearTimeout(clipboardTimer);
+    clipboardTimer = setTimeout(() => { navigator.clipboard.writeText('').catch(() => {}); }, CLIPBOARD_CLEAR_MS);
+  } catch {
+    vaultMessage('복사하지 못했어요. 항목을 열어 직접 확인하세요.', true);
+  }
+}
+
+// ---------- Passphrase and fingerprint ----------
+
+function readBio() {
+  try { return JSON.parse(localStorage.getItem(BIO_KEY)); } catch { return null; }
+}
+
+async function checkedRawKey() {
+  const meta = await readMeta();
+  try {
+    return { meta, raw: await rawKeyFromPassphrase(meta, $('vault-current').value) };
+  } catch {
+    vaultMessage('현재 금고 비밀번호가 맞지 않아요.', true);
+    return null;
+  }
+}
+
+function showOptions() {
+  const bio = readBio();
+  $('vault-bio-on').hidden = Boolean(bio);
+  $('vault-bio-off').hidden = !bio;
+  showVaultPanel('vault-options');
+}
+
+async function changePassphrase() {
+  const next = $('vault-change1').value;
+  if (next.length < MIN_PASSPHRASE) { vaultMessage(`금고 비밀번호는 ${MIN_PASSPHRASE}자 이상으로 정하세요.`, true); return; }
+  if (next !== $('vault-change2').value) { vaultMessage('새 비밀번호 두 칸이 달라요.', true); return; }
+  vaultMessage('바꾸는 중…');
+  const checked = await checkedRawKey();
+  if (!checked) return;
+  const meta = await buildMeta(checked.raw, next, checked.meta.keyId);
+  await updateVaultRecord(VAULT_META, r => ({ ...r, data: JSON.stringify(meta), dirty: true, rev: r.rev + 1 }));
+  $('vault-current').value = '';
+  $('vault-change1').value = '';
+  $('vault-change2').value = '';
+  vaultMessage('금고 비밀번호를 바꿨어요.');
+  scheduleSync(500);
+}
+
+async function bioSecret(credentialId, prfSalt) {
+  const assertion = await navigator.credentials.get({
+    publicKey: {
+      challenge: randomBytes(32),
+      rpId: location.hostname,
+      allowCredentials: [{ type: 'public-key', id: base64ToBytes(credentialId) }],
+      userVerification: 'required',
+      extensions: { prf: { eval: { first: base64ToBytes(prfSalt) } } },
+    },
+  });
+  const prf = assertion.getClientExtensionResults().prf;
+  if (!prf || !prf.results || !prf.results.first) throw new Error('no-prf');
+  return crypto.subtle.importKey('raw', prf.results.first, 'AES-GCM', false, ['encrypt', 'decrypt']);
+}
+
+async function enableBio() {
+  if (!window.PublicKeyCredential || !navigator.credentials) {
+    vaultMessage('이 브라우저는 지문 잠금 해제를 지원하지 않아요.', true);
+    return;
+  }
+  vaultMessage('확인 중…');
+  const checked = await checkedRawKey();
+  if (!checked) return;
+  try {
+    const prfSalt = bytesToBase64(randomBytes(32));
+    const credential = await navigator.credentials.create({
+      publicKey: {
+        rp: { name: '내 노트', id: location.hostname },
+        user: { id: randomBytes(16), name: 'vault', displayName: '내 노트 금고' },
+        challenge: randomBytes(32),
+        pubKeyCredParams: [{ type: 'public-key', alg: -7 }, { type: 'public-key', alg: -257 }],
+        authenticatorSelection: { authenticatorAttachment: 'platform', residentKey: 'preferred', userVerification: 'required' },
+        extensions: { prf: { eval: { first: base64ToBytes(prfSalt) } } },
+      },
+    });
+    const credentialId = bytesToBase64(new Uint8Array(credential.rawId));
+    const secret = await bioSecret(credentialId, prfSalt);
+    const key = await aesEncrypt(secret, checked.raw);
+    localStorage.setItem(BIO_KEY, JSON.stringify({ credentialId, prfSalt, key, keyId: checked.meta.keyId }));
+    $('vault-current').value = '';
+    showOptions();
+    vaultMessage('이 기기에서 지문 잠금 해제를 켰어요. 잠근 뒤 다시 열어 확인해 보세요.');
+  } catch (e) {
+    vaultMessage(e.message === 'no-prf' ? '이 기기나 브라우저는 지문으로 금고를 여는 방식을 지원하지 않아요. 금고 비밀번호로 열어 주세요.' : '지문 등록을 완료하지 못했어요.', true);
+  }
+}
+
+function disableBio() {
+  localStorage.removeItem(BIO_KEY);
+  showOptions();
+  vaultMessage('이 기기의 지문 잠금 해제를 껐어요.');
+}
+
+async function unlockWithBio() {
+  if (vaultBusy) return;
+  const bio = readBio();
+  const meta = await readMeta();
+  if (!bio || !meta) return;
+  vaultBusy = true;
+  try {
+    const secret = await bioSecret(bio.credentialId, bio.prfSalt);
+    await unlockWithRawKey(await aesDecrypt(secret, bio.key), meta.keyId);
+  } catch {
+    vaultMessage('지문으로 열지 못했어요. 금고 비밀번호로 열어 주세요.', true);
+  } finally {
+    vaultBusy = false;
+  }
+}
+
+// ---------- After sync ----------
+
+async function vaultAfterSync() {
+  if (!vaultSyncChanged) return;
+  vaultSyncChanged = false;
+  if (!$('vault').open) return;
+  if (!vaultKey) { await showLockedPanel(); return; }
+  const meta = await readMeta();
+  if (!meta || meta.keyId !== vaultKeyId) { lockVault(); return; }
+  await reloadEntries();
+  if (!$('vault-list').hidden) renderVaultList();
+}
+
+// ---------- Wiring ----------
+
+$('open-vault').onclick = openVault;
+$('vault-close').onclick = () => history.back();
+$('vault').addEventListener('cancel', e => { e.preventDefault(); history.back(); });
+$('vault-setup').addEventListener('submit', createVault);
+$('vault-unlock').addEventListener('submit', unlockWithPassphrase);
+$('vault-bio-unlock').onclick = unlockWithBio;
+$('vault-lock').onclick = lockVault;
+$('vault-add').onclick = () => openForm(null);
+$('vault-search').addEventListener('input', renderVaultList);
+$('vault-form').addEventListener('submit', saveEntry);
+$('vault-form').addEventListener('input', () => { formDirty = true; });
+$('vault-cancel').onclick = backToList;
+$('vault-delete').onclick = deleteEntry;
+$('vault-show').onclick = () => {
+  const field = $('vault-password');
+  field.type = field.type === 'password' ? 'text' : 'password';
+  $('vault-show').textContent = field.type === 'password' ? '보기' : '가리기';
+};
+$('vault-copy').onclick = () => copySecret($('vault-password').value, '비밀번호');
+$('vault-options-open').onclick = showOptions;
+$('vault-options-back').onclick = backToList;
+$('vault-change').onclick = changePassphrase;
+$('vault-bio-on').onclick = enableBio;
+$('vault-bio-off').onclick = disableBio;
+for (const type of ['pointerdown', 'keydown', 'input']) $('vault').addEventListener(type, resetIdleTimer);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && vaultKey) lockVault(); });
+window.addEventListener('pagehide', () => { if (vaultKey) lockVault(); });

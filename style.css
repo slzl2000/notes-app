@@ -249,6 +249,41 @@ dialog input:not([type=file]) {
 .row.end { justify-content: flex-end; margin-top: 16px; }
 #cfg-msg:empty, #io-msg:empty { display: none; }
 
+dialog#vault {
+  width: 100vw;
+  max-width: none;
+  height: 100dvh;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  border: 0;
+  border-radius: 0;
+}
+.vault-inner { max-width: 640px; margin: 0 auto; padding: 0 0 24px; }
+.vault-inner h2 { margin: 20px 0 8px; font-size: 15px; }
+#vault-msg { min-height: 20px; margin: 0; padding: 0 16px; }
+.vault-panel { padding: 8px 16px; }
+.vault-panel textarea {
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+  padding: 8px 10px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 16px;
+  resize: vertical;
+}
+#vault-search { width: 100%; margin: 0 0 8px; }
+#vault-entries { margin: 0 0 16px; padding: 0; list-style: none; }
+#vault-entries li { display: flex; align-items: center; gap: 6px; padding: 6px 0; border-top: 1px solid var(--line); }
+#vault-entries button { flex: none; padding: 0 8px; font-size: 13px; }
+#vault-entries .vault-entry { flex: 1; min-width: 0; min-height: 48px; padding: 2px 4px; border: 0; font-size: 15px; text-align: left; }
+.vault-entry strong, .vault-entry span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vault-entry strong { font-weight: 600; }
+.vault-entry span { color: var(--muted); font-size: 13px; }
+
 #toast {
   position: fixed;
   left: 50%;

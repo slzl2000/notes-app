@@ -19,6 +19,7 @@
     <h1>내 노트</h1>
     <span id="sync-status" class="status" role="status"></span>
     <button id="sync-now" class="icon" type="button" aria-label="지금 동기화" title="지금 동기화">⟳</button>
+    <button id="open-vault" class="icon" type="button" aria-label="금고" title="금고">🔒</button>
     <button id="open-settings" class="icon" type="button" aria-label="설정">⚙</button>
   </header>
   <input id="search" type="search" placeholder="모든 노트에서 검색" aria-label="노트 검색" autocomplete="off">
@@ -96,8 +97,85 @@
   </div>
 </dialog>
 
+<dialog id="vault" aria-label="금고">
+  <div class="vault-inner">
+    <header class="bar">
+      <button id="vault-close" class="icon" type="button" aria-label="금고 닫기">←</button>
+      <h1>금고</h1>
+      <button id="vault-lock" class="text" type="button">잠그기</button>
+    </header>
+    <p id="vault-msg" class="small" role="status"></p>
+
+    <form id="vault-setup" class="vault-panel" autocomplete="off" hidden>
+      <h2>금고 만들기</h2>
+      <p class="small"><strong>금고 비밀번호를 잊으면 아무도 복구할 수 없어요.</strong> 길게 정하고 종이에 적어 안전한 곳에 보관하세요. GitHub 비밀번호나 토큰과 다르게 정하세요.</p>
+      <p class="muted small">메일, 금융, GitHub 비밀번호는 여기에 넣지 말고 Bitwarden에 보관하세요.</p>
+      <label>금고 비밀번호 (10자 이상)<input id="vault-new1" type="password" autocomplete="off"></label>
+      <label>한 번 더 입력<input id="vault-new2" type="password" autocomplete="off"></label>
+      <button class="primary" type="submit">금고 만들기</button>
+    </form>
+
+    <form id="vault-unlock" class="vault-panel" autocomplete="off" hidden>
+      <h2>금고 열기</h2>
+      <label>금고 비밀번호<input id="vault-pass" type="password" autocomplete="off"></label>
+      <div class="row">
+        <button class="primary" type="submit">열기</button>
+        <button id="vault-bio-unlock" type="button" hidden>지문으로 열기</button>
+      </div>
+    </form>
+
+    <div id="vault-list" class="vault-panel" hidden>
+      <input id="vault-search" type="search" placeholder="금고에서 검색" aria-label="금고에서 검색" autocomplete="off">
+      <p id="vault-broken" class="small danger" hidden></p>
+      <ul id="vault-entries"></ul>
+      <p id="vault-empty" class="muted" hidden></p>
+      <div class="row">
+        <button id="vault-add" class="primary" type="button">항목 추가</button>
+        <button id="vault-options-open" type="button">금고 설정</button>
+      </div>
+    </div>
+
+    <form id="vault-form" class="vault-panel" autocomplete="off" hidden>
+      <label>사이트<input id="vault-site" autocomplete="off"></label>
+      <label>아이디<input id="vault-username" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
+      <label>비밀번호
+        <input id="vault-password" type="password" autocomplete="off" autocapitalize="off" spellcheck="false">
+      </label>
+      <div class="row">
+        <button id="vault-show" type="button">보기</button>
+        <button id="vault-copy" type="button">복사</button>
+      </div>
+      <label>메모<textarea id="vault-memo" rows="4" spellcheck="false"></textarea></label>
+      <div class="row">
+        <button class="primary" type="submit">저장</button>
+        <button id="vault-cancel" type="button">취소</button>
+        <button id="vault-delete" class="text danger" type="button" hidden>삭제</button>
+      </div>
+    </form>
+
+    <div id="vault-options" class="vault-panel" hidden>
+      <h2>금고 설정</h2>
+      <label>현재 금고 비밀번호<input id="vault-current" type="password" autocomplete="off"></label>
+      <h2>이 기기의 지문 잠금 해제</h2>
+      <div class="row">
+        <button id="vault-bio-on" type="button">지문 켜기</button>
+        <button id="vault-bio-off" type="button">지문 끄기</button>
+      </div>
+      <p class="muted small">이 기기에 등록된 지문이면 누구나 금고를 열 수 있어요.</p>
+      <h2>금고 비밀번호 변경</h2>
+      <label>새 비밀번호<input id="vault-change1" type="password" autocomplete="off"></label>
+      <label>한 번 더 입력<input id="vault-change2" type="password" autocomplete="off"></label>
+      <div class="row">
+        <button id="vault-change" type="button">변경</button>
+        <button id="vault-options-back" type="button">돌아가기</button>
+      </div>
+    </div>
+  </div>
+</dialog>
+
 <div id="toast" role="status" hidden></div>
 <script src="vendor/tinymce/tinymce.min.js"></script>
 <script src="app.js"></script>
+<script src="vault.js"></script>
 </body>
 </html>

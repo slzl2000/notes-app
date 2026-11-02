@@ -10,12 +10,16 @@ const IMAGE_PATH = /^\.\.\/images\/([0-9a-f]+\.(?:jpg|png|gif))$/;
 // ---------- Local database ----------
 
 const dbReady = new Promise((resolve, reject) => {
-  const req = indexedDB.open('notes-app', 1);
+  const req = indexedDB.open('notes-app', 2);
   req.onupgradeneeded = () => {
-    req.result.createObjectStore('notes', { keyPath: 'id' });
-    req.result.createObjectStore('images', { keyPath: 'name' });
+    for (const [store, keyPath] of [['notes', 'id'], ['images', 'name'], ['vault', 'id']]) {
+      if (!req.result.objectStoreNames.contains(store)) req.result.createObjectStore(store, { keyPath });
+    }
   };
-  req.onsuccess = () => resolve(req.result);
+  req.onsuccess = () => {
+    req.result.onversionchange = () => req.result.close();
+    resolve(req.result);
+  };
   req.onerror = () => reject(req.error);
 });
 
@@ -818,6 +822,7 @@ async function syncNow() {
     syncing = false;
     await refreshEditor();
     await render();
+    await vaultAfterSync();
     if (syncAgain) {
       syncAgain = false;
       scheduleSync(1000);
@@ -828,12 +833,13 @@ async function syncNow() {
 async function readTree(cfg, repo) {
   const notes = new Map();
   const images = new Map();
+  const vault = new Map();
   let tree;
   try {
     tree = await api(cfg, `/repos/${cfg.repo}/git/trees/${encodeURIComponent(repo.default_branch)}?recursive=1`);
   } catch (e) {
     // Only a repository with no commits yet may count as empty; any other failure must stop the sync.
-    if (e.status === 409 || (e.status === 404 && repo.size === 0)) return { notes, images };
+    if (e.status === 409 || (e.status === 404 && repo.size === 0)) return { notes, images, vault };
     throw e;
   }
   if (tree.truncated) throw new Error('truncated');
@@ -841,10 +847,12 @@ async function readTree(cfg, repo) {
     if (item.type !== 'blob') continue;
     const note = item.path.match(/^notes\/([\w-]+)\.html$/);
     const image = item.path.match(/^images\/([0-9a-f]+\.(?:jpg|png|gif))$/);
+    const secret = item.path.match(/^vault\/([\w-]+)\.json$/);
     if (note) notes.set(note[1], item.sha);
     else if (image) images.set(image[1], item.sha);
+    else if (secret) vault.set(secret[1], item.sha);
   }
-  return { notes, images };
+  return { notes, images, vault };
 }
 
 const MIME = { jpg: 'image/jpeg', png: 'image/png', gif: 'image/gif' };
@@ -913,6 +921,7 @@ async function adoptRepository(repo) {
       if (note.deleted) await removeNote(note.id);
       else await updateNote(note.id, n => { n.sha = null; n.dirty = true; return n; });
     }
+    await resetVaultSync();
   }
   localStorage.setItem(REPO_ID_KEY, String(repo.id));
 }
@@ -949,6 +958,10 @@ async function syncOnce(cfg) {
   // Images go first so a note never reaches another device before its pictures.
   let uploads = await syncImages(cfg, remoteTree.images);
   let more = uploads >= MAX_UPLOADS_PER_CYCLE;
+
+  const vaultResult = await syncVault(cfg, remoteTree.vault, Math.max(0, MAX_UPLOADS_PER_CYCLE - uploads));
+  uploads += vaultResult.writes;
+  more = more || vaultResult.more;
 
   const known = new Set(locals.map(n => n.id));
   for (const id of remote.keys()) {
@@ -1133,7 +1146,7 @@ async function parseBackup(text) {
   const notes = data.notes
     .filter(n => typeof n.body === 'string' && /^[\w-]+$/.test(n.id))
     .map(n => ({ ...makeNote(n.body, n.created, n.updated, typeof n.title === 'string' ? n.title : '', n.favorite === true), id: n.id }));
-  return { notes, skipped: 0 };
+  return { notes, skipped: 0, notice: await importVaultRecords(data.vault) };
 }
 
 async function importFiles(files) {
@@ -1142,17 +1155,19 @@ async function importFiles(files) {
   let added = 0;
   let existing = 0;
   let skipped = 0;
+  let notice = '';
   try {
     for (const file of files) {
       const text = await file.text();
       const parsed = file.name.toLowerCase().endsWith('.json') ? await parseBackup(text) : await parseEnex(text);
       skipped += parsed.skipped;
+      notice += parsed.notice || '';
       for (const note of parsed.notes) {
         const stored = await updateNote(note.id, n => (n ? undefined : note));
         if (stored) added += 1; else existing += 1;
       }
     }
-    msg.textContent = `${added}개 가져옴` + (existing ? `, 이미 있는 ${existing}개 건너뜀` : '') + (skipped ? `. 이미지가 아닌 첨부 파일 ${skipped}개는 옮겨지지 않았어요.` : '.');
+    msg.textContent = `${added}개 가져옴` + (existing ? `, 이미 있는 ${existing}개 건너뜀` : '') + (skipped ? `. 이미지가 아닌 첨부 파일 ${skipped}개는 옮겨지지 않았어요.` : '.') + notice;
   } catch {
     msg.textContent = '파일을 읽지 못했어요. 지금까지 ' + added + '개를 가져왔어요.';
   }
@@ -1169,7 +1184,7 @@ async function exportAll() {
   for (const image of await getAllImages()) {
     images.push({ name: image.name, data: bytesToBase64(new Uint8Array(await image.blob.arrayBuffer())) });
   }
-  const url = URL.createObjectURL(new Blob([JSON.stringify({ notes, images })], { type: 'application/json' }));
+  const url = URL.createObjectURL(new Blob([JSON.stringify({ notes, images, vault: await exportVaultRecords() })], { type: 'application/json' }));
   const a = document.createElement('a');
   a.href = url;
   a.download = `노트-백업-${new Date().toISOString().slice(0, 10)}.json`;
@@ -1255,7 +1270,10 @@ $('import').onclick = () => $('import-file').click();
 $('import-file').onchange = e => { const files = [...e.target.files]; e.target.value = ''; if (files.length) importFiles(files); };
 $('export').onclick = exportAll;
 
-window.addEventListener('popstate', () => { if (currentId) closeEditor(); });
+window.addEventListener('popstate', () => {
+  if ($('vault').open) { closeVault(); return; }
+  if (currentId) closeEditor();
+});
 window.addEventListener('online', syncNow);
 window.addEventListener('offline', () => setStatus('오프라인'));
 document.addEventListener('visibilitychange', () => {
