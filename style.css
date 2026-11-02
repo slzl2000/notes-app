@@ -284,7 +284,7 @@ dialog#vault {
   font-size: 16px;
   resize: vertical;
 }
-#vault-search { width: 100%; margin: 0 0 8px; }
+#vault-search { width: 100%; margin: 12px 0 8px; }
 #vault-entries, #vault-pattern-list { margin: 0 0 16px; padding: 0; list-style: none; }
 #vault-entries li, #vault-pattern-list li { display: flex; align-items: center; gap: 6px; padding: 6px 0; border-top: 1px solid var(--line); }
 #vault-entries button, #vault-pattern-list button { flex: none; padding: 0 8px; font-size: 13px; }
