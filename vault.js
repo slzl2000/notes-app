@@ -7,7 +7,7 @@
 const VAULT_META = 'meta';
 const KDF_ITERATIONS = 600000;
 const MIN_KDF_ITERATIONS = 300000;
-const MIN_PASSPHRASE = 10;
+const MIN_PASSPHRASE = 8;
 const IDLE_LOCK_MS = 5 * 60 * 1000;
 const CLIPBOARD_CLEAR_MS = 30 * 1000;
 const DRAFT_KEY = 'notes.vaultDraft';

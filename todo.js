@@ -357,7 +357,7 @@ function todoDetail(item, titleEl) {
   const remove = todoButton('삭제', () => {
     if (remove.dataset.armed) { removeTodo(item.id); return; }
     remove.dataset.armed = '1';
-    remove.textContent = '정말 삭제';
+    remove.textContent = '삭제 확정';
     remove.className = 'todo-remove danger-bg';
   }, 'todo-remove text danger');
   moves.append(remove);
