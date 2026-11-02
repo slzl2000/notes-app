@@ -394,18 +394,20 @@ async function reloadEntries() {
   vaultBroken = broken;
 }
 
+const entryName = e => e.site.trim() || (e.url || '').trim();
+
 function renderVaultList() {
   const q = $('vault-search').value.trim().toLowerCase();
   const shown = vaultEntries
-    .filter(e => !q || `${e.site}\n${e.username}\n${e.memo}`.toLowerCase().includes(q))
-    .sort((a, b) => a.site.localeCompare(b.site, 'ko'));
+    .filter(e => !q || `${e.site}\n${e.url || ''}\n${e.username}\n${e.memo}`.toLowerCase().includes(q))
+    .sort((a, b) => entryName(a).localeCompare(entryName(b), 'ko'));
   $('vault-entries').replaceChildren(...shown.map(entry => {
     const li = document.createElement('li');
     const open = document.createElement('button');
     open.type = 'button';
     open.className = 'vault-entry';
     const site = document.createElement('strong');
-    site.textContent = entry.site || '(이름 없음)';
+    site.textContent = entryName(entry) || '(이름 없음)';
     const user = document.createElement('span');
     user.textContent = entry.username;
     open.append(site, user);
@@ -430,6 +432,7 @@ function renderVaultList() {
 
 const readForm = () => ({
   site: $('vault-site').value,
+  url: $('vault-url').value,
   username: $('vault-username').value,
   password: $('vault-password').value,
   memo: $('vault-memo').value,
@@ -437,6 +440,7 @@ const readForm = () => ({
 
 function fillForm(data) {
   $('vault-site').value = data.site || '';
+  $('vault-url').value = data.url || '';
   $('vault-username').value = data.username || '';
   $('vault-password').value = data.password || '';
   $('vault-memo').value = data.memo || '';
@@ -527,7 +531,7 @@ async function removeEntry(id) {
 async function saveEntry(event) {
   event.preventDefault();
   const data = readForm();
-  if (!data.site.trim()) { vaultMessage('사이트 이름을 적어 주세요.', true); return; }
+  if (!entryName(data)) { vaultMessage('사이트명이나 주소 중 하나는 적어 주세요.', true); return; }
   await storeEntry(editingId || newId(), data);
   backToList();
   vaultMessage('저장했어요.');
