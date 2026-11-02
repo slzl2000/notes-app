@@ -128,9 +128,24 @@ function fitTodoMemo(box) {
   box.style.height = `${box.scrollHeight + 2}px`;
 }
 
+// Redrawing replaces the row that was just tapped; some browsers then move focus to the top of
+// the screen and scroll with it, so the scroll position and the focused row are put back.
 function renderTodos() {
   if (typingInTodo()) { todoRenderPending = true; return; }
   todoRenderPending = false;
+  const page = $('todo');
+  const top = page.scrollTop;
+  const focused = document.activeElement && document.activeElement.closest ? document.activeElement.closest('[data-todo]') : null;
+  drawTodos();
+  if (focused) {
+    const again = page.querySelector(`[data-todo="${focused.dataset.todo}"] .todo-text`);
+    if (again) again.focus({ preventScroll: true });
+  }
+  page.scrollTop = top;
+  requestAnimationFrame(() => { page.scrollTop = top; });
+}
+
+function drawTodos() {
   const items = loadTodos().items.filter(i => !i.deleted);
   for (const [list] of TODO_LISTS) {
     const live = liveIn(items, list);
@@ -155,6 +170,7 @@ function todoButton(label, onclick, className) {
 
 function todoRow(item) {
   const li = document.createElement('li');
+  li.dataset.todo = item.id;
   if (item.done) li.className = 'done';
   const row = document.createElement('div');
   row.className = 'todo-row';
@@ -179,7 +195,7 @@ function todoRow(item) {
     sub.textContent = note;
     label.append(sub);
   }
-  label.onclick = () => { openTodoId = openTodoId === item.id ? null : item.id; renderTodos(); };
+  label.onclick = () => toggleTodoDetail(item.id);
   row.append(box, label);
   const due = item.done ? null : dueLabel(item);
   if (due) {
@@ -191,6 +207,34 @@ function todoRow(item) {
   li.append(row);
   if (openTodoId === item.id) li.append(todoDetail(item, text));
   return li;
+}
+
+// Opening or closing an item only swaps rows, and the tapped item stays where it was on screen
+// even when an item above it closes.
+function toggleTodoDetail(id) {
+  const page = $('todo');
+  const tapped = page.querySelector(`[data-todo="${id}"]`);
+  const before = tapped ? tapped.getBoundingClientRect().top : 0;
+  const swap = rowId => {
+    const old = page.querySelector(`[data-todo="${rowId}"]`);
+    const item = loadTodos().items.find(i => i.id === rowId);
+    if (!old) return;
+    if (!item || item.deleted) { old.remove(); return; }
+    const row = todoRow(item); // drawn fresh, so edits made while it was open show up
+    old.replaceWith(row);
+    return row;
+  };
+  const previous = openTodoId;
+  openTodoId = previous === id ? null : id;
+  if (previous && previous !== id) swap(previous);
+  const row = swap(id);
+  if (!row) return;
+  row.querySelector('.todo-text').focus({ preventScroll: true });
+  page.scrollTop += row.getBoundingClientRect().top - before;
+  // An item opened near the bottom is lifted just enough to show its details, never past its title.
+  const box = row.getBoundingClientRect();
+  const hidden = box.bottom - page.clientHeight;
+  if (openTodoId === id && hidden > 0) page.scrollTop += Math.min(hidden, box.top - 60);
 }
 
 function todoDetail(item, titleEl) {
