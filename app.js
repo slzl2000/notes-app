@@ -520,6 +520,7 @@ async function render() {
   empty.hidden = shown.length + vaultHits.length > 0;
   empty.textContent = q || activeTag ? '찾는 노트가 없어요.' : '아직 노트가 없어요. ＋ 버튼으로 시작하세요.';
   if ($('trash').open) await renderTrash();
+  if ($('todo').open) renderTodos();
 }
 
 function onEdit() {
@@ -985,17 +986,19 @@ async function readTree(cfg, repo) {
   const notes = new Map();
   const images = new Map();
   const vault = new Map();
+  let todos = null;
   let tree;
   try {
     tree = await api(cfg, `/repos/${cfg.repo}/git/trees/${encodeURIComponent(repo.default_branch)}?recursive=1`);
   } catch (e) {
     // Only a repository with no commits yet may count as empty; any other failure must stop the sync.
-    if (e.status === 409 || (e.status === 404 && repo.size === 0)) return { notes, images, vault };
+    if (e.status === 409 || (e.status === 404 && repo.size === 0)) return { notes, images, vault, todos };
     throw e;
   }
   if (tree.truncated) throw new Error('truncated');
   for (const item of tree.tree) {
     if (item.type !== 'blob') continue;
+    if (item.path === TODO_FILE) todos = item.sha;
     const note = item.path.match(/^notes\/([\w-]+)\.html$/);
     const image = item.path.match(/^images\/([0-9a-f]+\.(?:jpg|png|gif))$/);
     const secret = item.path.match(/^vault\/([\w-]+)\.json$/);
@@ -1003,7 +1006,7 @@ async function readTree(cfg, repo) {
     else if (image) images.set(image[1], item.sha);
     else if (secret) vault.set(secret[1], item.sha);
   }
-  return { notes, images, vault };
+  return { notes, images, vault, todos };
 }
 
 const MIME = { jpg: 'image/jpeg', png: 'image/png', gif: 'image/gif' };
@@ -1073,6 +1076,7 @@ async function adoptRepository(repo) {
       else await updateNote(note.id, n => { n.sha = null; n.dirty = true; return n; });
     }
     await resetVaultSync();
+    resetTodoSync();
   }
   localStorage.setItem(REPO_ID_KEY, String(repo.id));
 }
@@ -1113,6 +1117,8 @@ async function syncOnce(cfg) {
   const vaultResult = await syncVault(cfg, remoteTree.vault, Math.max(0, MAX_UPLOADS_PER_CYCLE - uploads));
   uploads += vaultResult.writes;
   more = more || vaultResult.more;
+
+  uploads += await syncTodos(cfg, remoteTree.todos);
 
   const known = new Set(locals.map(n => n.id));
   for (const id of remote.keys()) {
@@ -1481,6 +1487,7 @@ $('purge-yes').onclick = confirmPurge;
 window.addEventListener('popstate', () => {
   if ($('purge').open) $('purge').close();
   if ($('trash').open) { $('trash').close(); return; }
+  if ($('todo').open) { todoBack(); return; }
   if ($('vault').open) { vaultBack(); return; }
   if (currentId) closeEditor();
 });
@@ -1500,7 +1507,7 @@ if ('serviceWorker' in navigator) {
     if (!hadController || updateSeen) return;
     updateSeen = true;
     // Never reload under someone who is editing or inside the vault.
-    if (!currentId && !$('vault').open) location.reload();
+    if (!currentId && !$('vault').open && !$('todo').open) location.reload();
     else toast('새 버전이 준비됐어요. 앱을 다시 열면 적용돼요.');
   });
   navigator.serviceWorker.register('sw.js');

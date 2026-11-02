@@ -33,7 +33,7 @@ body {
   color: var(--text);
   font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif;
 }
-button, input, textarea { font: inherit; color: inherit; }
+button, input, textarea, select { font: inherit; color: inherit; }
 button {
   min-height: 36px;
   padding: 0 12px;
@@ -260,7 +260,7 @@ dialog::backdrop { background: rgb(0 0 0 / 45%); }
 dialog h2 { margin: 8px 0 12px; font-size: 16px; }
 dialog h2:not(:first-child) { margin-top: 24px; }
 dialog label { display: block; margin-bottom: 12px; font-size: 13px; }
-dialog input:not([type=file]) {
+dialog input:not([type=file]):not([type=checkbox]), dialog select {
   display: block;
   width: 100%;
   margin-top: 4px;
@@ -281,7 +281,7 @@ dialog input:not([type=file]) {
 #trash-list span { color: var(--muted); font-size: 13px; }
 #trash-list button { flex: none; padding: 0 10px; font-size: 13px; }
 
-dialog#vault {
+dialog#vault, dialog#todo {
   width: 100vw;
   max-width: none;
   height: 100dvh;
@@ -292,7 +292,40 @@ dialog#vault {
   border: 0;
   border-radius: 0;
 }
-.vault-inner { max-width: 640px; margin: 0 auto; padding: 0 0 24px; }
+.vault-inner, .todo-inner { max-width: 640px; margin: 0 auto; padding: 0 0 24px; }
+.todo-panel { padding: 0 16px; }
+.todo-add { display: flex; gap: 6px; margin: 4px 0 8px; }
+dialog .todo-add input { flex: 1; min-width: 0; margin: 0; }
+dialog .todo-add select { flex: none; width: auto; margin: 0; padding: 8px 6px; }
+.todo-add button { flex: none; }
+.todo-section h2, .todo-section summary { margin: 20px 0 6px; font-size: 15px; font-weight: 700; }
+.todo-section summary { cursor: pointer; }
+.todo-section > .muted { margin: 4px 0 0; }
+.todo-items { margin: 0; padding: 0; list-style: none; }
+.todo-items > li { border-top: 1px solid var(--line); }
+.todo-row { display: flex; align-items: center; gap: 10px; }
+.todo-row input[type=checkbox] { flex: none; width: 22px; height: 22px; margin: 0 2px; accent-color: var(--accent); }
+.todo-text { flex: 1; min-width: 0; min-height: 48px; padding: 6px 0; border: 0; text-align: left; }
+.todo-text strong { display: block; font-weight: 400; overflow-wrap: anywhere; }
+.todo-text span { display: block; overflow: hidden; color: var(--muted); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.todo-items .done .todo-text strong { color: var(--muted); text-decoration: line-through; }
+.todo-due { flex: none; padding: 2px 8px; background: var(--selected); border-radius: 10px; color: var(--muted); font-size: 12px; }
+.todo-due.over { color: var(--danger); font-weight: 700; }
+.todo-detail { padding: 0 0 12px 36px; }
+.todo-detail textarea {
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+  padding: 8px 10px;
+  overflow: hidden;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 16px;
+  resize: none;
+}
+.todo-detail .row button { font-size: 13px; }
+.todo-hint { margin-top: 24px; }
 .vault-inner h2 { margin: 20px 0 8px; font-size: 15px; }
 #vault-msg { min-height: 20px; margin: 0; padding: 0 16px; }
 .vault-panel { padding: 8px 16px; }
