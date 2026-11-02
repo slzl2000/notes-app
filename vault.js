@@ -393,6 +393,7 @@ async function restoreDraft() {
     openForm(draft.id ? vaultEntries.find(e => e.id === draft.id) || null : null);
     editingId = draft.id;
     fillForm(draft);
+    setFormEditing(true);
     formDirty = true;
     vaultMessage('작성 중이던 내용을 복원했어요.');
   } catch { /* sealed with another key */ }
@@ -559,19 +560,47 @@ function renderFormChips() {
   }))));
 }
 
+function showPassword(shown) {
+  $('vault-password').type = shown ? 'text' : 'password';
+  $('vault-show').textContent = shown ? '가리기' : '보기';
+}
+
+// A saved entry opens read-only so a stray tap cannot change it; 수정 makes it editable.
+let formEditing = false;
+function setFormEditing(editing) {
+  formEditing = editing;
+  $('vault-form').classList.toggle('viewing', !editing);
+  for (const id of ['vault-site', 'vault-url', 'vault-username', 'vault-password', 'vault-memo']) $(id).readOnly = !editing;
+  for (const id of ['vault-form-hint', 'vault-username-chips', 'vault-pattern-chips', 'vault-similar', 'vault-save']) $(id).hidden = !editing;
+  $('vault-edit').hidden = editing;
+  $('vault-delete').hidden = !(editing && editingId);
+  $('vault-delete').textContent = '삭제';
+  $('vault-delete').dataset.armed = '';
+  $('vault-cancel').textContent = editing ? '취소' : '목록';
+}
+
 function openForm(entry) {
   editingId = entry ? entry.id : null;
   formDirty = false;
   duplicateConfirmed = false;
   fillForm(entry || {});
-  $('vault-password').type = 'password';
-  $('vault-show').textContent = '보기';
-  $('vault-delete').hidden = !entry;
-  $('vault-delete').textContent = '삭제';
-  $('vault-delete').dataset.armed = '';
+  // A new password is shown while it is typed, so it can be checked without pressing 보기.
+  showPassword(!entry);
+  setFormEditing(!entry);
   showVaultPanel('vault-form');
   fitMemo();
   if (!entry) $('vault-site').focus();
+}
+
+// 취소 while changing a saved entry goes back to viewing it as it was; otherwise to the list.
+function cancelForm() {
+  const entry = formEditing && editingId && vaultEntries.find(e => e.id === editingId);
+  if (!entry) { backToList(); return; }
+  formDirty = false;
+  duplicateConfirmed = false;
+  fillForm(entry);
+  setFormEditing(false);
+  vaultMessage('');
 }
 
 function backToList() {
@@ -633,6 +662,7 @@ function renderSimilar() {
 
 async function saveEntry(event) {
   event.preventDefault();
+  if (!formEditing) return; // Enter in a read-only field
   const data = readForm();
   if (!entryName(data)) { vaultMessage('사이트명이나 사이트 주소 중 하나는 적어 주세요.', true); return; }
   // A new entry is checked against every entry for the site or a similar one. An edited one only
@@ -873,13 +903,10 @@ $('vault-memo').addEventListener('input', fitMemo);
 $('vault-memo').addEventListener('input', renderFormLinks);
 $('vault-url').addEventListener('input', renderFormLinks);
 window.addEventListener('resize', fitMemo);
-$('vault-cancel').onclick = backToList;
+$('vault-cancel').onclick = cancelForm;
+$('vault-edit').onclick = () => { setFormEditing(true); renderSimilar(); };
 $('vault-delete').onclick = deleteEntry;
-$('vault-show').onclick = () => {
-  const field = $('vault-password');
-  field.type = field.type === 'password' ? 'text' : 'password';
-  $('vault-show').textContent = field.type === 'password' ? '보기' : '가리기';
-};
+$('vault-show').onclick = () => showPassword($('vault-password').type === 'password');
 $('vault-copy').onclick = () => copySecret($('vault-password').value, '비밀번호');
 $('vault-username').addEventListener('input', renderUsernameChips);
 $('vault-patterns-open').onclick = showPatterns;

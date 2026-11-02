@@ -285,6 +285,8 @@ dialog#vault {
   white-space: nowrap;
 }
 .chips-label { flex-basis: 100%; }
+/* Read-only entry: plain text look, so it is clear nothing can be typed. */
+#vault-form.viewing input, #vault-form.viewing textarea { background: transparent; border-style: dashed; }
 dialog label[for] { margin-bottom: 0; }
 .field-row { display: flex; gap: 6px; margin: 4px 0 12px; }
 dialog .field-row input { flex: 1; min-width: 0; margin-top: 0; }

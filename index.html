@@ -156,7 +156,7 @@
     </form>
 
     <form id="vault-form" class="vault-panel" autocomplete="off" hidden>
-      <p class="muted small">사이트명과 사이트 주소 중 하나는 꼭 적어 주세요. 나머지 칸은 비워도 돼요.</p>
+      <p id="vault-form-hint" class="muted small">사이트명과 사이트 주소 중 하나는 꼭 적어 주세요. 나머지 칸은 비워도 돼요.</p>
       <label>사이트명<input id="vault-site" autocomplete="off"></label>
       <label>사이트 주소<input id="vault-url" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
       <div id="vault-url-link" class="chips"></div>
@@ -173,7 +173,8 @@
       <label>메모<textarea id="vault-memo" rows="4" spellcheck="false"></textarea></label>
       <div id="vault-memo-links" class="chips"></div>
       <div class="row">
-        <button class="primary" type="submit">저장</button>
+        <button id="vault-save" class="primary" type="submit">저장</button>
+        <button id="vault-edit" class="primary" type="button" hidden>수정</button>
         <button id="vault-cancel" type="button">취소</button>
         <button id="vault-delete" class="text danger" type="button" hidden>삭제</button>
       </div>
