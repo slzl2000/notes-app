@@ -445,6 +445,17 @@ function fillForm(data) {
   $('vault-password').value = data.password || '';
   $('vault-memo').value = data.memo || '';
   renderFormChips();
+  fitMemo();
+}
+
+function fitMemo() {
+  if ($('vault-form').hidden) return;
+  const memo = $('vault-memo');
+  // Collapsing the box to measure it would otherwise make the page jump while typing.
+  const top = $('vault').scrollTop;
+  memo.style.height = 'auto';
+  memo.style.height = `${memo.scrollHeight + memo.offsetHeight - memo.clientHeight}px`;
+  $('vault').scrollTop = top;
 }
 
 function chip(text, onClick) {
@@ -495,6 +506,7 @@ function openForm(entry) {
   $('vault-delete').textContent = '삭제';
   $('vault-delete').dataset.armed = '';
   showVaultPanel('vault-form');
+  fitMemo();
   if (!entry) $('vault-site').focus();
 }
 
@@ -748,6 +760,8 @@ $('vault-add').onclick = () => openForm(null);
 $('vault-search').addEventListener('input', renderVaultList);
 $('vault-form').addEventListener('submit', saveEntry);
 $('vault-form').addEventListener('input', () => { formDirty = true; });
+$('vault-memo').addEventListener('input', fitMemo);
+window.addEventListener('resize', fitMemo);
 $('vault-cancel').onclick = backToList;
 $('vault-delete').onclick = deleteEntry;
 $('vault-show').onclick = () => {

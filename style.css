@@ -282,7 +282,8 @@ dialog#vault {
   border: 1px solid var(--line);
   border-radius: 8px;
   font-size: 16px;
-  resize: vertical;
+  overflow: hidden;
+  resize: none;
 }
 #vault-search { width: 100%; margin: 12px 0 8px; }
 #vault-entries, #vault-pattern-list { margin: 0 0 16px; padding: 0; list-style: none; }
