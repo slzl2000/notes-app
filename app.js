@@ -1342,6 +1342,44 @@ $('find-input').addEventListener('keydown', e => {
 });
 $('image-file').onchange = e => { const files = [...e.target.files]; e.target.value = ''; if (files.length) insertImages(files); };
 $('sync-now').onclick = syncNow;
+
+// The list's width is dragged by its right border and remembered on this device.
+const SIDE_WIDTH_KEY = 'notes.sideWidth';
+const DEFAULT_SIDE_WIDTH = 320;
+function setSideWidth(width, save) {
+  const clamped = Math.round(Math.max(220, Math.min(width, window.innerWidth - 360)));
+  document.documentElement.style.setProperty('--side-width', `${clamped}px`);
+  $('resizer').setAttribute('aria-valuenow', clamped);
+  if (save) localStorage.setItem(SIDE_WIDTH_KEY, String(clamped));
+}
+setSideWidth(Number(localStorage.getItem(SIDE_WIDTH_KEY)) || DEFAULT_SIDE_WIDTH, false);
+window.addEventListener('resize', () => setSideWidth(Number(localStorage.getItem(SIDE_WIDTH_KEY)) || DEFAULT_SIDE_WIDTH, false));
+$('resizer').addEventListener('pointerdown', e => {
+  if (e.button !== 0) return;
+  const handle = e.currentTarget;
+  const startX = e.clientX, startWidth = $('side').getBoundingClientRect().width;
+  handle.setPointerCapture(e.pointerId);
+  handle.classList.add('dragging');
+  document.body.classList.add('resizing');
+  const move = ev => setSideWidth(startWidth + ev.clientX - startX, false);
+  const end = ev => {
+    handle.removeEventListener('pointermove', move);
+    handle.removeEventListener('pointerup', end);
+    handle.removeEventListener('pointercancel', end);
+    handle.classList.remove('dragging');
+    document.body.classList.remove('resizing');
+    setSideWidth(startWidth + ev.clientX - startX, true);
+  };
+  handle.addEventListener('pointermove', move);
+  handle.addEventListener('pointerup', end);
+  handle.addEventListener('pointercancel', end);
+  e.preventDefault();
+});
+$('resizer').addEventListener('dblclick', () => setSideWidth(DEFAULT_SIDE_WIDTH, true));
+$('resizer').addEventListener('keydown', e => {
+  const step = e.key === 'ArrowLeft' ? -20 : e.key === 'ArrowRight' ? 20 : 0;
+  if (step) { e.preventDefault(); setSideWidth($('side').getBoundingClientRect().width + step, true); }
+});
 $('open-settings').onclick = openSettings;
 $('settings-close').onclick = () => $('settings').close();
 $('settings-form').addEventListener('submit', saveSettings);

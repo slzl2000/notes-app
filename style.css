@@ -77,11 +77,31 @@ h1 { flex: 1; margin: 0; font-size: 18px; font-weight: 700; white-space: nowrap;
   position: relative;
   display: flex;
   flex-direction: column;
-  flex: 0 0 320px;
+  flex: 0 0 var(--side-width, 320px);
   min-width: 0;
   background: var(--panel);
   border-right: 1px solid var(--line);
 }
+/* A wide, invisible grab area over the list's right border. */
+#resizer {
+  position: relative;
+  z-index: 1;
+  flex: none;
+  width: 10px;
+  margin: 0 -5px;
+  cursor: col-resize;
+  touch-action: none;
+}
+#resizer::after {
+  content: '';
+  position: absolute;
+  inset: 0 4px;
+}
+#resizer:hover::after, #resizer.dragging::after, #resizer:focus-visible::after { background: var(--accent); }
+#resizer:focus-visible { outline: 0; }
+body.resizing { cursor: col-resize; user-select: none; }
+/* The editor is an iframe and would swallow the pointer while dragging over it. */
+body.resizing #main { pointer-events: none; }
 #search {
   margin: 0 12px 8px;
   padding: 8px 12px;
@@ -342,6 +362,7 @@ dialog .field-row input { flex: 1; min-width: 0; margin-top: 0; }
 @media (max-width: 720px) {
   #side { flex: 1; border-right: 0; }
   #main { display: none; }
+  #resizer { display: none; }
   #back { display: block; }
   body.editing #side { display: none; }
   body.editing #main { display: flex; }
