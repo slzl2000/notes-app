@@ -7,7 +7,7 @@
 const TODO_KEY = 'notes.todos';
 const TODO_LIST_KEY = 'notes.todoList';
 const TODO_FILE = 'todos.json';
-const TODO_LISTS = [['today', '오늘'], ['short', '단기'], ['long', '장기']];
+const TODO_LISTS = [['today', '긴급'], ['short', '단기'], ['long', '장기']]; // keys stay as first saved
 const DAY = 86400000;
 const DONE_KEEP_DAYS = 30;
 // Deletion marks outlive finished items, so a device that was offline cannot bring one back.
@@ -76,7 +76,20 @@ function moveTodo(id, list) {
     if (!item) return;
     Object.assign(item, { list, order: nextOrder(items, list), updated: new Date().toISOString() });
   });
-  toast(`${TODO_LISTS.find(([key]) => key === list)[1]}로 옮겼어요.`);
+  toast(`${toListLabel(TODO_LISTS.find(([key]) => key === list)[1])} 옮겼어요.`);
+}
+
+function finishTodo(id, done) {
+  openTodoId = null;
+  editTodo(id, { done: done ? new Date().toISOString() : '' });
+  toast(done ? "완료했어요. 아래 '완료'에 있어요." : '완료를 취소했어요.');
+}
+
+// '긴급으로', '단기로': 으로 after a final consonant other than ㄹ.
+function toListLabel(name) {
+  const code = name.charCodeAt(name.length - 1) - 0xac00;
+  const final = code >= 0 && code < 11172 ? code % 28 : 0;
+  return `${name}${final && final !== 8 ? '으로' : '로'}`;
 }
 
 function shiftTodo(id, step) {
@@ -137,10 +150,12 @@ function renderTodos() {
   const top = page.scrollTop;
   const focused = document.activeElement && document.activeElement.closest ? document.activeElement.closest('[data-todo]') : null;
   drawTodos();
-  if (focused) {
-    const again = page.querySelector(`[data-todo="${focused.dataset.todo}"] .todo-text`);
-    if (again) again.focus({ preventScroll: true });
-  }
+  const again = focused && page.querySelector(`[data-todo="${focused.dataset.todo}"] .todo-text`);
+  if (again && again.getClientRects().length) again.focus({ preventScroll: true });
+  // Focus left on a removed row, or on a finished item now in the folded '완료' list, is lost;
+  // the page itself takes it, so the browser does not hand it to the top of the screen.
+  const active = document.activeElement;
+  if (!page.contains(active) || !active.getClientRects().length) $('todo-main').focus({ preventScroll: true });
   page.scrollTop = top;
   requestAnimationFrame(() => { page.scrollTop = top; });
 }
@@ -174,14 +189,11 @@ function todoRow(item) {
   if (item.done) li.className = 'done';
   const row = document.createElement('div');
   row.className = 'todo-row';
-  const box = document.createElement('input');
-  box.type = 'checkbox';
-  box.checked = Boolean(item.done);
-  box.setAttribute('aria-label', item.done ? '완료 취소' : '완료');
-  box.onchange = () => {
-    if (openTodoId === item.id) openTodoId = null;
-    editTodo(item.id, { done: box.checked ? new Date().toISOString() : '' });
-  };
+  // Only a marker: finishing an item is done from its details, so it cannot happen by a stray tap.
+  const mark = document.createElement('span');
+  mark.className = 'todo-mark';
+  mark.setAttribute('aria-hidden', 'true');
+  mark.textContent = item.done ? '✓' : '';
   const label = document.createElement('button');
   label.type = 'button';
   label.className = 'todo-text';
@@ -196,7 +208,7 @@ function todoRow(item) {
     label.append(sub);
   }
   label.onclick = () => toggleTodoDetail(item.id);
-  row.append(box, label);
+  row.append(mark, label);
   const due = item.done ? null : dueLabel(item);
   if (due) {
     const badge = document.createElement('span');
@@ -264,11 +276,18 @@ function todoDetail(item, titleEl) {
   due.onchange = () => editTodo(item.id, { due: due.value }, true);
   box.append(field('할 일', text), field('메모', memo), field('마감일 (없어도 돼요)', due));
 
+  const finish = document.createElement('div');
+  finish.className = 'row todo-finish';
+  finish.append(item.done
+    ? todoButton('완료 취소', () => finishTodo(item.id, false))
+    : todoButton('✓ 완료', () => finishTodo(item.id, true), 'primary'));
+  box.append(finish);
+
   const actions = document.createElement('div');
   actions.className = 'row';
   if (!item.done) {
     for (const [list, name] of TODO_LISTS) {
-      if (list !== item.list) actions.append(todoButton(`${name}로`, () => moveTodo(item.id, list)));
+      if (list !== item.list) actions.append(todoButton(toListLabel(name), () => moveTodo(item.id, list)));
     }
     actions.append(todoButton('↑ 위로', () => shiftTodo(item.id, -1)), todoButton('↓ 아래로', () => shiftTodo(item.id, 1)));
   }

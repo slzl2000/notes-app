@@ -304,7 +304,22 @@ dialog .todo-add select { flex: none; width: auto; margin: 0; padding: 8px 6px; 
 .todo-items { margin: 0; padding: 0; list-style: none; }
 .todo-items > li { border-top: 1px solid var(--line); }
 .todo-row { display: flex; align-items: center; gap: 10px; }
-.todo-row input[type=checkbox] { flex: none; width: 22px; height: 22px; margin: 0 2px; accent-color: var(--accent); }
+.todo-mark {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  margin: 0 4px;
+  border: 2px solid var(--line);
+  border-radius: 50%;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+}
+.done .todo-mark { border-color: var(--accent); }
+#todo-main:focus { outline: 0; }
+.todo-finish { margin-bottom: 12px; }
 .todo-text { flex: 1; min-width: 0; min-height: 48px; padding: 6px 0; border: 0; text-align: left; }
 .todo-text strong { display: block; font-weight: 400; overflow-wrap: anywhere; }
 .todo-text span { display: block; overflow: hidden; color: var(--muted); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
