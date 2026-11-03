@@ -180,14 +180,39 @@ body.resizing #main { pointer-events: none; }
   border: 0;
   border-radius: 50%;
   color: var(--accent-text);
-  font-size: 24px;
   box-shadow: 0 3px 10px rgb(0 0 0 / 25%);
 }
+/* The plus is drawn, not typed: a font's ＋ sits a little off centre and differs between phones. */
+.fab::before, .fab::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 22px;
+  height: 2.5px;
+  background: currentColor;
+  border-radius: 2px;
+  transform: translate(-50%, -50%);
+}
+.fab::after { transform: translate(-50%, -50%) rotate(90deg); }
 
 #main { display: flex; flex: 1; flex-direction: column; min-width: 0; }
 #placeholder { margin: auto; }
 #editor-wrap { display: flex; flex: 1; flex-direction: column; min-height: 0; }
-#editor-wrap .bar { justify-content: space-between; border-bottom: 1px solid var(--line); }
+#editor-wrap .bar { position: relative; justify-content: space-between; border-bottom: 1px solid var(--line); }
+.menu {
+  position: absolute;
+  top: calc(100% - 6px);
+  right: 8px;
+  z-index: 5;
+  min-width: 180px;
+  padding: 4px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 6px 18px rgb(0 0 0 / 25%);
+}
+.menu button { display: block; width: 100%; min-height: 44px; border: 0; text-align: left; }
 #back { display: none; }
 #edited { flex: 1; }
 #note-title {
@@ -299,7 +324,27 @@ dialog#vault, dialog#todo {
   border: 0;
   border-radius: 0;
 }
-.vault-inner, .todo-inner { max-width: 640px; margin: 0 auto; padding: 0 0 24px; }
+/* On a wide screen they open beside the list, where a note would be. */
+dialog#vault:not(:modal), dialog#todo:not(:modal) {
+  position: fixed;
+  inset: 0 0 0 var(--side-width, 320px);
+  z-index: 10;
+  width: auto;
+  height: auto;
+  overflow-y: auto;
+  border-left: 1px solid var(--line);
+}
+/* A header like a note's, across the whole page, staying put while the page scrolls. */
+dialog#vault .bar, dialog#todo .bar {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  margin-bottom: 8px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--line);
+}
+.vault-inner, .todo-inner { padding: 0 0 24px; }
+.todo-panel, .vault-panel, #vault-msg { max-width: 640px; margin-inline: auto; }
 .todo-panel { padding: 0 16px; }
 .todo-add { display: flex; gap: 6px; margin: 4px 0 8px; }
 dialog .todo-add input { flex: 1; min-width: 0; margin: 0; }
@@ -374,7 +419,7 @@ body.todo-dragging, body.todo-dragging * { cursor: grabbing; user-select: none; 
 .todo-detail .row button { font-size: 13px; }
 .todo-hint { margin-top: 24px; }
 .vault-inner h2 { margin: 20px 0 8px; font-size: 15px; }
-#vault-msg { min-height: 20px; margin: 0; padding: 0 16px; }
+#vault-msg { min-height: 20px; margin-block: 0; padding: 0 16px; }
 .vault-panel { padding: 8px 16px; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; margin: -4px 0 12px; }
 .chips:empty { display: none; }
@@ -444,6 +489,7 @@ dialog .field-row input { flex: 1; min-width: 0; margin-top: 0; }
   color: var(--bg);
   font-size: 14px;
   transform: translateX(-50%);
+  z-index: 20;
 }
 
 @media (max-width: 720px) {

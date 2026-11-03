@@ -29,7 +29,7 @@
     <button id="open-vault" class="icon" type="button" aria-label="금고" title="금고">🔒</button>
     <button id="open-trash" class="icon" type="button" aria-label="휴지통" title="휴지통">🗑</button>
   </footer>
-  <button id="new-note" class="fab" type="button" aria-label="새 노트">＋</button>
+  <button id="new-note" class="fab" type="button" aria-label="새 노트"></button>
 </aside>
 <div id="resizer" role="separator" aria-orientation="vertical" aria-label="목록 너비 조절" title="끌어서 너비 조절 · 두 번 누르면 원래대로" tabindex="0"></div>
 
@@ -41,7 +41,10 @@
       <span id="edited" class="muted small"></span>
       <button id="favorite" class="icon star" type="button" aria-label="즐겨찾기" aria-pressed="false">☆</button>
       <button id="find-open" class="icon" type="button" aria-label="이 노트에서 찾기">⌕</button>
-      <button id="delete" class="text danger" type="button">삭제</button>
+      <button id="note-more" class="icon" type="button" aria-label="더 보기" aria-haspopup="menu" aria-expanded="false">⋯</button>
+      <div id="note-menu" class="menu" role="menu" hidden>
+        <button id="delete" class="danger" type="button" role="menuitem">휴지통으로 옮기기</button>
+      </div>
     </header>
     <div id="find-bar" class="find" hidden>
       <input id="find-input" type="search" placeholder="이 노트에서 찾기" aria-label="이 노트에서 찾기" autocomplete="off" readonly>

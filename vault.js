@@ -9,6 +9,7 @@ const KDF_ITERATIONS = 600000;
 const MIN_KDF_ITERATIONS = 300000;
 const MIN_PASSPHRASE = 8;
 const IDLE_LOCK_MS = 5 * 60 * 1000;
+const LEAVE_GRACE_MS = 60 * 1000;
 const CLIPBOARD_CLEAR_MS = 30 * 1000;
 const DRAFT_KEY = 'notes.vaultDraft';
 const BIO_KEY = 'notes.vaultBio';
@@ -205,6 +206,7 @@ let vaultKeyId = null;
 let editingId = null;
 let formDirty = false;
 let idleTimer = null;
+let graceTimer = null;
 let clipboardTimer = null;
 let vaultBusy = false;
 
@@ -240,9 +242,26 @@ function resetIdleTimer() {
 async function openVault() {
   if ($('vault').open) return;
   await flushEditor();
-  history.pushState({ vault: true, note: Boolean(history.state && history.state.note) }, '');
+  const state = { vault: true, note: Boolean(history.state && history.state.note) };
+  if (leavePages()) history.replaceState(state, '');
+  else history.pushState(state, '');
   clearVaultInputs();
-  $('vault').showModal();
+  showPage($('vault'));
+  // Back within a minute of leaving: still unlocked, unless the key was changed on another device.
+  if (vaultKey) {
+    clearTimeout(graceTimer);
+    const meta = await readMeta();
+    if (meta && meta.keyId === vaultKeyId) {
+      await reloadEntries();
+      backToList();
+      resetIdleTimer();
+      const pending = vaultEntries.find(e => e.id === pendingEntryId);
+      pendingEntryId = null;
+      if (pending) openForm(pending);
+      return;
+    }
+    lockVault();
+  }
   await showLockedPanel();
   // Only here, not after locking: the lock button must not bring the prompt straight back.
   if (!$('vault-unlock').hidden && !$('vault-bio-unlock').hidden) await unlockWithBio();
@@ -273,8 +292,20 @@ async function showLockedPanel() {
   }
 }
 
+// Leaving hides the vault at once but keeps it unlocked for a minute, so stepping out to a note
+// and back needs no fingerprint. An entry with unsaved changes still locks at once, sealing it.
 function closeVault() {
-  lockVault();
+  const unsaved = !$('vault-form').hidden && formDirty;
+  if (vaultKey && !unsaved) {
+    clearTimeout(idleTimer);
+    backToList();
+    clearVaultInputs();
+    $('vault-entries').replaceChildren();
+    clearTimeout(graceTimer);
+    graceTimer = setTimeout(lockVault, LEAVE_GRACE_MS);
+  } else {
+    lockVault();
+  }
   if ($('vault').open) $('vault').close();
 }
 
@@ -363,6 +394,7 @@ async function createVault(event) {
 // Clears the screen at once, then seals any unsaved form so the key can be dropped.
 function lockVault() {
   clearTimeout(idleTimer);
+  clearTimeout(graceTimer);
   pendingEntryId = null;
   const key = vaultKey;
   const unsaved = key && !$('vault-form').hidden && formDirty ? { id: editingId, ...readForm() } : null;

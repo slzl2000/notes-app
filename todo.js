@@ -71,10 +71,10 @@ function addTodo(text, list) {
   changeTodos(items => { items.push(newTodo(items, text, list, false)); });
 }
 
-// Moving a resolved item into a list brings it back as a live one.
+// Moving a resolved item into a list brings it back as a live one. The item folds as it moves.
 function moveTodo(id, list) {
   let revived = false;
-  if (!loadTodos().items.some(i => i.id === id && !i.done)) openTodoId = null;
+  openTodoId = null;
   changeTodos(items => {
     const item = items.find(i => i.id === id);
     if (!item) return;
@@ -451,6 +451,7 @@ function showTodoPanel(id) {
 }
 
 function openTodo() {
+  if ($('todo').open) return;
   const state = loadTodos();
   const cleaned = cleanTodos(state.items);
   if (canonTodos(cleaned) !== canonTodos(state.items)) {
@@ -460,9 +461,10 @@ function openTodo() {
   openTodoId = null;
   $('todo-new-list').value = localStorage.getItem(TODO_LIST_KEY) || 'short';
   showTodoPanel('todo-main');
+  if (leavePages()) history.replaceState({ todo: true }, '');
+  else history.pushState({ todo: true }, '');
+  showPage($('todo'));
   renderTodos();
-  history.pushState({ todo: true }, '');
-  $('todo').showModal();
 }
 
 // The phone's back button leaves the import screen first, then the list.
@@ -514,7 +516,9 @@ function resetTodoSync() {
 
 $('todo-close').onclick = () => $('todo').close();
 $('todo').addEventListener('close', () => {
-  if (history.state && history.state.todo) history.back();
+  // Left for a note or the vault, which has taken over this page's place in the history.
+  if ($('todo').dataset.leaving) delete $('todo').dataset.leaving;
+  else if (history.state && history.state.todo) history.back();
   render(); // the counts on the note list
 });
 $('todo-add').addEventListener('submit', e => {

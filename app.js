@@ -608,6 +608,7 @@ async function toggleFavorite(id) {
 }
 
 function hideEditor() {
+  toggleNoteMenu(false);
   currentId = null;
   savedValue = '';
   savedTitle = '';
@@ -637,7 +638,31 @@ async function showNote(n, fromSearch) {
   await render();
 }
 
+// On a wide screen the to-do page and the vault open beside the list, as a note does; on a phone
+// they cover the list, again as a note does there.
+const wideScreen = () => matchMedia('(min-width: 721px)').matches;
+function showPage(dialog) {
+  if (wideScreen()) dialog.show();
+  else dialog.showModal();
+}
+
+// Opening a note or another page from the list replaces the page that is open and takes over its
+// place in the history, so the back button never steps through pages already left.
+function leavePages() {
+  const todo = $('todo').open;
+  const vault = $('vault').open;
+  if (!todo && !vault) return false;
+  if (todo) {
+    $('todo').dataset.leaving = '1';
+    $('todo').close();
+  }
+  if (vault) closeVault();
+  history.replaceState({ note: true }, '');
+  return true;
+}
+
 async function openNote(id) {
+  leavePages();
   if (id === currentId) {
     const q = $('search').value.trim();
     if (q) openFind(q);
@@ -650,6 +675,7 @@ async function openNote(id) {
 }
 
 async function createNote() {
+  leavePages();
   await flushEditor();
   await discardIfBlank();
   const n = makeNote('');
@@ -777,6 +803,9 @@ async function refreshEditor() {
 let toastTimer = null;
 function toast(text) {
   const t = $('toast');
+  // A full-screen page sits above everything else, so the message is shown inside it.
+  const host = [...document.querySelectorAll('dialog[open]')].pop() || document.body;
+  if (t.parentElement !== host) host.append(t);
   t.textContent = text;
   t.hidden = false;
   clearTimeout(toastTimer);
@@ -1017,8 +1046,9 @@ async function syncImages(cfg, remote) {
   const locals = await getAllImages();
   const known = new Set(locals.map(i => i.name));
   let uploads = 0;
-  for (const [name, sha] of remote) {
-    if (known.has(name)) continue;
+  const missing = [...remote].filter(([name]) => !known.has(name));
+  for (const [i, [name, sha]] of missing.entries()) {
+    if (missing.length > 5) setStatus(`사진 받는 중 ${i}/${missing.length}`);
     const blob = await api(cfg, `/repos/${cfg.repo}/git/blobs/${sha}`);
     await putImage({ name, blob: new Blob([base64ToBytes(blob.content)], { type: MIME[name.split('.').pop()] }), uploaded: true });
   }
@@ -1112,7 +1142,21 @@ async function syncOnce(cfg) {
   }
   vanishChoice = null;
 
-  // Images go first so a note never reaches another device before its pictures.
+  // New notes come down first, and appear in the list as they arrive: on a new device the first
+  // sync can take minutes, and an empty list looks broken.
+  const known = new Set(locals.map(n => n.id));
+  const fresh = [...remote.keys()].filter(id => !known.has(id));
+  let drawn = Date.now();
+  for (const [i, id] of fresh.entries()) {
+    if (fresh.length > 5) setStatus(`노트 받는 중 ${i}/${fresh.length}`);
+    await download(cfg, id, remote.get(id));
+    if (Date.now() - drawn > 1000) {
+      drawn = Date.now();
+      await render();
+    }
+  }
+
+  // Images are uploaded before notes, so a note never reaches another device before its pictures.
   let uploads = await syncImages(cfg, remoteTree.images);
   let more = uploads >= MAX_UPLOADS_PER_CYCLE;
 
@@ -1121,11 +1165,6 @@ async function syncOnce(cfg) {
   more = more || vaultResult.more;
 
   uploads += await syncTodos(cfg, remoteTree.todos);
-
-  const known = new Set(locals.map(n => n.id));
-  for (const id of remote.keys()) {
-    if (!known.has(id)) await download(cfg, id, remote.get(id));
-  }
 
   for (const note of locals) {
     const remoteSha = remote.get(note.id);
@@ -1414,7 +1453,17 @@ for (const id of ['search', 'find-input', 'vault-search']) {
   box.addEventListener('blur', () => { box.readOnly = true; });
 }
 $('search').addEventListener('input', render);
-$('delete').onclick = () => $('confirm').showModal();
+// Moving a note to the trash sits in a menu, away from where the thumb rests.
+function toggleNoteMenu(open) {
+  $('note-menu').hidden = !open;
+  $('note-more').setAttribute('aria-expanded', String(open));
+}
+$('note-more').onclick = () => toggleNoteMenu($('note-menu').hidden);
+document.addEventListener('pointerdown', e => {
+  if (!$('note-menu').hidden && !e.target.closest('#note-menu, #note-more')) toggleNoteMenu(false);
+});
+window.addEventListener('blur', () => toggleNoteMenu(false)); // a tap into the editor's frame
+$('delete').onclick = () => { toggleNoteMenu(false); $('confirm').showModal(); };
 $('confirm-no').onclick = () => $('confirm').close();
 $('confirm-yes').onclick = () => { $('confirm').close(); deleteCurrent(); };
 $('find-open').onclick = () => {
