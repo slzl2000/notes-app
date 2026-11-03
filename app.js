@@ -636,7 +636,9 @@ function createFolder(e) {
 let editingFolderId = null;
 function openFolderEdit(id) {
   editingFolderId = id;
-  $('folder-name').value = loadOrder().items[id].name;
+  const folder = loadOrder().items[id];
+  $('folder-name').value = folder.name;
+  $('folder-favorite').textContent = folder.favorite ? '★ 즐겨찾기 해제' : '☆ 즐겨찾기에 추가';
   $('folder-edit').showModal();
 }
 
@@ -831,15 +833,15 @@ async function render() {
     li.textContent = text;
     return li;
   };
-  const starButton = (on, onclick) => {
-    const star = document.createElement('button');
-    star.type = 'button';
-    star.className = on ? 'star on' : 'star';
-    star.textContent = on ? '★' : '☆';
-    star.setAttribute('aria-label', on ? '즐겨찾기 해제' : '즐겨찾기');
-    star.setAttribute('aria-pressed', String(Boolean(on)));
-    star.onclick = onclick;
-    return star;
+  // Notes are starred from their own page; only folders carry a button here.
+  const folderMenuButton = f => {
+    const more = document.createElement('button');
+    more.type = 'button';
+    more.className = 'folder-more';
+    more.textContent = '⋯';
+    more.setAttribute('aria-label', `${f.name} 폴더 편집`);
+    more.onclick = () => openFolderEdit(f.id);
+    return more;
   };
   const noteRow = (n, section) => {
     const li = document.createElement('li');
@@ -848,6 +850,7 @@ async function render() {
     const b = document.createElement('button');
     b.type = 'button';
     b.className = n.id === currentId ? 'note on' : 'note';
+    b.classList.toggle('with-handle', editingOrder);
     const title = document.createElement('strong');
     title.textContent = titleOf(n);
     const sub = document.createElement('span');
@@ -858,7 +861,6 @@ async function render() {
     b.onclick = () => openNote(n.id);
     li.append(b);
     if (editingOrder) li.append(handleFor(li));
-    else if (!inFolder(n)) li.append(starButton(n.favorite, () => toggleFavorite(n.id)));
     return li;
   };
   const folderRow = (f, section) => {
@@ -873,14 +875,15 @@ async function render() {
     b.className = 'folder-head';
     b.setAttribute('aria-expanded', String(isOpen));
     const title = document.createElement('strong');
-    title.textContent = f.name;
+    const name = document.createElement('b');
+    name.textContent = f.name;
+    title.append(name);
     const count = document.createElement('span');
-    count.textContent = `노트 ${kids.length}개${editingOrder ? ' · 눌러서 이름 바꾸기·삭제' : ''}`;
+    count.textContent = `노트 ${kids.length}개`;
     b.append(title, count);
-    b.onclick = () => (editingOrder ? openFolderEdit(f.id) : toggleFolderOpen(f.id));
+    b.onclick = () => toggleFolderOpen(f.id);
     li.append(b);
-    if (editingOrder) li.append(handleFor(li));
-    else li.append(starButton(f.favorite, () => toggleFolderFavorite(f.id)));
+    li.append(editingOrder ? handleFor(li) : folderMenuButton(f));
     if (isOpen) {
       const ul = document.createElement('ul');
       ul.className = 'folder-notes';
@@ -1890,6 +1893,10 @@ $('folder-move-close').onclick = () => $('folder-move').close();
 $('folder-save').onclick = saveFolderName;
 $('folder-name').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); saveFolderName(); } });
 $('folder-delete').onclick = deleteFolder;
+$('folder-favorite').onclick = () => {
+  $('folder-edit').close();
+  toggleFolderFavorite(editingFolderId);
+};
 $('folder-edit-close').onclick = () => $('folder-edit').close();
 // Moving a note to the trash sits in a menu, away from where the thumb rests.
 function toggleNoteMenu(open) {

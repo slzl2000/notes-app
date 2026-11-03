@@ -536,8 +536,9 @@ function renderFormLinks() {
 }
 
 function fitMemo() {
-  if ($('vault-form').hidden) return;
   const memo = $('vault-memo');
+  // A hidden box measures 0; setFormEditing fits it again once it shows.
+  if ($('vault-form').hidden || !memo.offsetParent) return;
   // Collapsing the box to measure it would otherwise make the page jump while typing.
   const top = $('vault').scrollTop;
   memo.style.height = 'auto';
@@ -615,6 +616,7 @@ function setFormEditing(editing) {
   $('vault-password').closest('.field-row').hidden = noPassword;
   $('vault').querySelector('label[for="vault-password"]').hidden = noPassword;
   for (const id of ['vault-site', 'vault-url', 'vault-username', 'vault-password', 'vault-memo']) $(id).tabIndex = editing ? 0 : -1;
+  fitMemo();
 }
 
 function openForm(entry) {
