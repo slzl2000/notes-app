@@ -234,6 +234,9 @@ function ensureEditor() {
       toolbar_mode: 'scrolling',
       toolbar: 'undo redo | blocks | bold italic underline strikethrough | forecolor backcolor | bullist numlist notecheck | table noteimage link | removeformat',
       table_toolbar: 'tableprops tabledelete | tableinsertrowbefore tableinsertrowafter tabledeleterow | tableinsertcolbefore tableinsertcolafter tabledeletecol | tablemergecells tablesplitcells | tablecellbackgroundcolor',
+      // Dragging a column border widens that column and the table, instead of taking room from a
+      // neighbour that may have none to give.
+      table_column_resizing: 'resizetable',
       contextmenu: false,
       browser_spellcheck: true,
       convert_urls: false,
@@ -249,7 +252,11 @@ function ensureEditor() {
       content_style: `
         body { max-width: 760px; margin: 16px auto; padding: 0 16px 40px; font: 16px/1.7 -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif; }
         img { max-width: 100%; height: auto; }
-        table { max-width: 100%; }
+        /* Text keeps its column, but a table may run past it to the right and, when wider than the
+           page, scroll sideways; cells never squeeze a word into one letter per line. */
+        html { overflow-x: auto; }
+        table { max-width: none; font-size: 14px; }
+        td, th { padding: 4px 6px; word-break: keep-all; }
         input[type=checkbox] { width: 16px; height: 16px; margin-right: 4px; vertical-align: -2px; }
         .yt-card { display: block; position: relative; width: 100%; max-width: 480px; aspect-ratio: 16 / 9; margin: 6px 0 10px; overflow: hidden; background: #000; border-radius: 10px; cursor: pointer; }
         .yt-card img, .yt-card iframe { display: block; width: 100%; height: 100%; border: 0; object-fit: cover; }
@@ -838,7 +845,7 @@ async function render() {
     const more = document.createElement('button');
     more.type = 'button';
     more.className = 'folder-more';
-    more.textContent = '⋯';
+    more.textContent = '⋮';
     more.setAttribute('aria-label', `${f.name} 폴더 편집`);
     more.onclick = () => openFolderEdit(f.id);
     return more;
@@ -903,10 +910,15 @@ async function render() {
   const favCard = () => {
     const li = document.createElement('li');
     li.className = 'fav-card';
+    const head = document.createElement('div');
+    head.className = 'fav-label';
+    const star = document.createElement('b');
+    star.textContent = '★';
+    head.append(star, ' 즐겨찾기');
     const ul = document.createElement('ul');
     ul.className = 'fav-list';
     ul.append(...favorites.map(row('favorite')));
-    li.append(ul);
+    li.append(head, ul);
     return li;
   };
   const vaultHits = q && !activeTag ? readVaultIndex().filter(e => `${e.site}\n${e.url}`.toLowerCase().includes(q)) : [];
@@ -926,7 +938,7 @@ async function render() {
   $('list').replaceChildren(
     // todo.js may still be loading on the first draw; it draws the list again once it is in.
     ...(q || activeTag || typeof todoEntry !== 'function' ? [] : [todoEntry()]),
-    ...(favorites.length ? [label('즐겨찾기'), favCard()] : []),
+    ...(favorites.length ? [favCard()] : []),
     ...(favorites.length && others.length ? [label('노트')] : []),
     ...others.map(row('note')),
     ...(vaultHits.length ? [label('금고'), ...vaultHits.map(vaultRow)] : []),

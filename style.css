@@ -13,7 +13,7 @@
   --urgent-bg: rgb(168 58 42 / 6%);
   --text-soft: #4b4741;
   --handle: #a19b91;
-  --card: #efebe2;
+  --card: #f5f2eb;
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -30,7 +30,7 @@
     --urgent-bg: rgb(200 112 78 / 9%);
     --text-soft: #c6c2b9;
     --handle: #8a857b;
-    --card: #2d2b28;
+    --card: #292826;
   }
 }
 * { box-sizing: border-box; }
@@ -54,6 +54,8 @@ button {
 }
 button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .icon { width: 40px; min-height: 40px; padding: 0; border: 0; font-size: 18px; }
+/* Drawn icons: a typed ⌕ or ⋯ comes out small and sits differently on each phone. */
+.glyph { display: block; width: 22px; height: 22px; margin: auto; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .text { border: 0; }
 .danger { color: var(--danger); }
 .primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
@@ -142,24 +144,24 @@ body.resizing #main { pointer-events: none; }
 /* The folder name lines up with the notes; a grey chevron after it points down, or up when open. */
 #list .folder-head strong { display: flex; align-items: center; }
 #list .folder-head strong b { min-width: 0; overflow: hidden; font-weight: inherit; text-overflow: ellipsis; }
+/* Drawn from two borders and turned about its own centre, so it stays put while it flips. */
 #list .folder-head strong::after {
-  content: '›';
+  content: '';
   flex: none;
-  width: 18px;
-  margin-left: 4px;
-  color: var(--muted);
-  font-size: 22px;
-  font-weight: 400;
-  line-height: 1;
-  text-align: center;
-  transform: rotate(90deg);
+  width: 6px;
+  height: 6px;
+  margin-left: 10px;
+  border: solid var(--muted);
+  border-width: 0 1.8px 1.8px 0;
+  transform: translateY(-2px) rotate(45deg);
   transition: transform 0.15s;
 }
-#list .folder-head[aria-expanded="true"] strong::after { transform: rotate(-90deg); }
-/* Favourites share one grey band across the full width, like the to-do row. */
+#list .folder-head[aria-expanded="true"] strong::after { transform: translateY(2px) rotate(-135deg); }
+/* Favourites share one grey band across the full width, opened by its own heading. */
 #list li.fav-card { background: var(--card); }
+.fav-label { padding: 20px 16px 8px; color: var(--muted); font-size: 13px; font-weight: 700; }
+.fav-label b { color: var(--accent); }
 .fav-list { margin: 0; padding: 0; list-style: none; }
-#list .fav-list > li:first-child > button { border-top: 0; }
 .folder-fav { width: 100%; min-height: 44px; margin-bottom: 12px; text-align: left; }
 /* The note's own star is the only place a note is starred, so it gets a little more room. */
 #favorite { width: 44px; min-height: 44px; font-size: 22px; }
