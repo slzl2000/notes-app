@@ -108,8 +108,32 @@ h1 { flex: 1; margin: 0; font-size: 18px; font-weight: 700; white-space: nowrap;
 body.resizing { cursor: col-resize; user-select: none; }
 /* The editor is an iframe and would swallow the pointer while dragging over it. */
 body.resizing #main { pointer-events: none; }
+/* Search boxes carry their own ✕, visible whenever there is text; the browser's appears only on hover. */
+.search-box { position: relative; display: flex; flex: 1; min-width: 0; }
+.search-box input { flex: 1; min-width: 0; padding-right: 40px !important; }
+.search-box input::-webkit-search-cancel-button { display: none; -webkit-appearance: none; }
+.search-box .clear {
+  position: absolute;
+  top: 50%;
+  right: 2px;
+  width: 36px;
+  min-height: 36px;
+  padding: 0;
+  border: 0;
+  color: var(--muted);
+  font-size: 15px;
+  transform: translateY(-50%);
+}
+.search-box input:placeholder-shown + .clear { display: none; }
+.side-search { flex: none; margin: 0 12px 8px; }
+.vault-search-box { margin: 12px 0 8px; }
+.list-tools { display: flex; align-items: center; gap: 8px; min-height: 0; padding: 0 8px 0 16px; }
+.list-tools button { min-height: 30px; margin-left: auto; padding: 0 8px; color: var(--muted); }
+.list-tools button.on { color: var(--accent); font-weight: 700; }
+#list .list-handle { position: absolute; top: 10px; right: 6px; display: grid; overflow: visible; }
+#list li.dragging { z-index: 1; background: var(--selected); box-shadow: 0 3px 10px rgb(0 0 0 / 25%); }
+body.list-dragging, body.list-dragging * { cursor: grabbing; user-select: none; -webkit-user-select: none; }
 #search {
-  margin: 0 12px 8px;
   padding: 8px 12px;
   background: var(--bg);
   border: 1px solid var(--line);
@@ -438,7 +462,15 @@ body.todo-dragging, body.todo-dragging * { cursor: grabbing; user-select: none; 
 }
 .chips-label { flex-basis: 100%; }
 /* Read-only entry: plain text look, so it is clear nothing can be typed. */
-#vault-form.viewing input, #vault-form.viewing textarea { background: transparent; border-style: dashed; }
+#vault-form.viewing input, #vault-form.viewing textarea {
+  padding-inline: 0;
+  background: transparent;
+  border-color: transparent;
+  outline: 0;
+  box-shadow: none;
+  cursor: text;
+}
+#vault-form.viewing label { color: var(--muted); }
 dialog label[for] { margin-bottom: 0; }
 .field-row { display: flex; gap: 6px; margin: 4px 0 12px; }
 dialog .field-row input { flex: 1; min-width: 0; margin-top: 0; }
@@ -469,7 +501,7 @@ dialog .field-row input { flex: 1; min-width: 0; margin-top: 0; }
   overflow: hidden;
   resize: none;
 }
-#vault-search { width: 100%; margin: 12px 0 8px; }
+dialog .search-box input#vault-search { margin-top: 0; }
 #vault-entries, #vault-pattern-list { margin: 0 0 16px; padding: 0; list-style: none; }
 #vault-entries li, #vault-pattern-list li { display: flex; align-items: center; gap: 6px; padding: 6px 0; border-top: 1px solid var(--line); }
 #vault-entries button, #vault-pattern-list button { flex: none; padding: 0 8px; font-size: 13px; }

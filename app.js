@@ -185,6 +185,7 @@ async function toEditorHtml(body) {
 // The editor may rewrite an image's src to a data address, so the attribute is what identifies it.
 function toStoredHtml(html) {
   const doc = parseHtml(html);
+  for (const card of doc.querySelectorAll('.yt-card')) card.remove(); // drawn on screen only
   for (const img of doc.querySelectorAll('img[data-note-image]')) {
     img.setAttribute('src', `../images/${img.getAttribute('data-note-image')}`);
     img.removeAttribute('data-note-image');
@@ -250,6 +251,10 @@ function ensureEditor() {
         img { max-width: 100%; height: auto; }
         table { max-width: 100%; }
         input[type=checkbox] { width: 16px; height: 16px; margin-right: 4px; vertical-align: -2px; }
+        .yt-card { display: block; position: relative; width: 100%; max-width: 480px; aspect-ratio: 16 / 9; margin: 6px 0 10px; overflow: hidden; background: #000; border-radius: 10px; cursor: pointer; }
+        .yt-card img, .yt-card iframe { display: block; width: 100%; height: 100%; border: 0; object-fit: cover; }
+        .yt-card::after { content: ''; position: absolute; top: 50%; left: 50%; width: 64px; height: 44px; background: rgb(0 0 0 / 70%) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M9 7l8 5-8 5z' fill='white'/%3E%3C/svg%3E") center / 28px no-repeat; border-radius: 12px; transform: translate(-50%, -50%); }
+        .yt-card.playing::after { display: none; }
         ::highlight(note-hit) { background: #ffe08a; color: #24221e; }
         ::highlight(note-current) { background: #f39a2d; color: #000; }${darkMode() ? DARK_CONTENT_STYLE : ''}`,
       paste_preprocess: (_, args) => { args.content = stylePastedTable(args.content); },
@@ -274,6 +279,8 @@ function ensureEditor() {
           ed.on('PastePostProcess SetContent', () => { if (!loading) processImages(); });
           ed.on('PastePostProcess', e => linkifyText(e.node));
           ed.on('click', e => {
+            const card = e.target.closest && e.target.closest('.yt-card');
+            if (card) { playVideo(card); return; }
             if (e.target.nodeName === 'INPUT' && e.target.type === 'checkbox') {
               if (e.target.hasAttribute('checked')) e.target.removeAttribute('checked');
               else e.target.setAttribute('checked', 'checked');
@@ -326,6 +333,68 @@ function linkifyText(root) {
   }
 }
 
+// ---------- YouTube ----------
+// A YouTube link gets a thumbnail under it; the player loads only when the thumbnail is tapped,
+// so opening a note asks YouTube for nothing. The cards are never saved: the note keeps the link.
+
+function youtubeId(href) {
+  let url;
+  try { url = new URL(href); } catch { return null; }
+  const host = url.hostname.replace(/^(www\.|m\.|music\.)/, '');
+  let id = null;
+  if (host === 'youtu.be') id = url.pathname.slice(1);
+  else if (host === 'youtube.com' || host === 'youtube-nocookie.com') {
+    id = url.searchParams.get('v') || (url.pathname.match(/^\/(?:shorts|live|embed)\/([^/]+)/) || [])[1];
+  }
+  if (!id || !/^[\w-]{11}$/.test(id)) return null;
+  const t = url.searchParams.get('t') || url.searchParams.get('start') || '';
+  const m = t.match(/^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s?)?$/);
+  const start = m ? (Number(m[1] || 0) * 3600) + (Number(m[2] || 0) * 60) + Number(m[3] || 0) : 0;
+  return { id, start };
+}
+
+function decorateVideos() {
+  if (!editor) return;
+  const body = editor.getBody();
+  const doc = editor.getDoc();
+  const wanted = new Set();
+  for (const a of body.querySelectorAll('a[href]')) {
+    const video = youtubeId(a.getAttribute('href'));
+    if (!video) continue;
+    const next = a.nextElementSibling;
+    if (next && next.classList.contains('yt-card') && next.dataset.yt === video.id) { wanted.add(next); continue; }
+    const card = doc.createElement('span');
+    card.className = 'yt-card';
+    card.contentEditable = 'false';
+    card.dataset.yt = video.id;
+    card.dataset.start = String(video.start);
+    card.setAttribute('data-mce-bogus', 'all'); // the editor leaves it out of the saved text and undo
+    const img = doc.createElement('img');
+    img.src = `https://i.ytimg.com/vi/${video.id}/hqdefault.jpg`;
+    img.alt = 'YouTube 영상, 눌러서 재생';
+    img.dataset.ytThumb = '1';
+    card.append(img);
+    a.after(card);
+    wanted.add(card);
+  }
+  // A card whose link was edited away goes too.
+  for (const card of body.querySelectorAll('.yt-card')) if (!wanted.has(card)) card.remove();
+}
+
+function playVideo(card) {
+  if (card.classList.contains('playing')) return;
+  const frame = editor.getDoc().createElement('iframe');
+  const start = Number(card.dataset.start) || 0;
+  frame.src = `https://www.youtube-nocookie.com/embed/${card.dataset.yt}?autoplay=1&playsinline=1${start ? `&start=${start}` : ''}`;
+  frame.title = 'YouTube 영상';
+  frame.allow = 'autoplay; encrypted-media; picture-in-picture; fullscreen';
+  frame.allowFullscreen = true;
+  // The app sends no referrer anywhere, but YouTube refuses to play embedded videos without one.
+  frame.referrerPolicy = 'strict-origin-when-cross-origin';
+  card.replaceChildren(frame);
+  card.classList.add('playing');
+}
+
 // Excel puts cell colours in a <style> block as classes; move them onto the cells so they survive.
 let lastClipboardHtml = '';
 function stylePastedTable(content) {
@@ -362,7 +431,7 @@ function processImages() {
     let changed = false;
     for (const img of [...editor.getBody().querySelectorAll('img')]) {
       const src = img.getAttribute('src') || '';
-      if (img.hasAttribute('data-note-image') || IMAGE_PATH.test(src)) continue;
+      if (img.hasAttribute('data-note-image') || img.closest('.yt-card') || IMAGE_PATH.test(src)) continue;
       changed = true;
       if (/^(data|blob):/.test(src)) {
         try {
@@ -444,10 +513,160 @@ function readVaultIndex() {
   }
 }
 
+// ---------- Note order ----------
+// The list keeps the order it is dragged into. The order lives in its own repository file,
+// merged note by note like the to-do list, so reordering never rewrites the notes themselves.
+
+const ORDER_KEY = 'notes.order';
+const ORDER_FILE = 'notes-order.json';
+let orderEditing = false;
+let renderPending = false;
+
+function loadOrder() {
+  try {
+    const state = JSON.parse(localStorage.getItem(ORDER_KEY));
+    if (state && state.items && typeof state.items === 'object') return state;
+  } catch { /* unreadable; start empty */ }
+  return { items: {}, sha: null, dirty: false };
+}
+const saveOrder = state => localStorage.setItem(ORDER_KEY, JSON.stringify(state));
+const canonOrder = items => JSON.stringify(Object.keys(items).sort().map(id => [id, items[id].order, items[id].updated]));
+
+function setOrders(orders) {
+  const state = loadOrder();
+  const now = new Date().toISOString();
+  for (const [id, order] of Object.entries(orders)) state.items[id] = { order, updated: now };
+  state.dirty = true;
+  saveOrder(state);
+  scheduleSync(3000);
+}
+
+// New notes, and notes that change section (a favourite added or removed, a note restored),
+// go to the top.
+function putOnTop(id) {
+  const orders = Object.values(loadOrder().items).map(i => i.order);
+  setOrders({ [id]: Math.min(0, ...orders) - 1 });
+}
+
+// Notes without a place yet (all of them on first use, or one that arrived before the order
+// file) go below the rest, newest first. Undated, so a place set on any device wins the merge.
+function placeMissing(notes) {
+  const state = loadOrder();
+  const missing = notes.filter(n => !state.items[n.id]).sort((a, b) => b.updated.localeCompare(a.updated));
+  if (!missing.length) return state.items;
+  let next = Math.max(-1, ...Object.values(state.items).map(i => i.order)) + 1;
+  for (const n of missing) state.items[n.id] = { order: next++, updated: '' };
+  state.dirty = true;
+  saveOrder(state);
+  return state.items;
+}
+
+async function syncOrder(cfg, remoteSha) {
+  let state = loadOrder();
+  if (remoteSha && remoteSha !== state.sha) {
+    const blob = await api(cfg, `/repos/${cfg.repo}/git/blobs/${remoteSha}`);
+    const theirs = JSON.parse(fromBase64(blob.content)).items || {};
+    state = loadOrder(); // drags made while downloading
+    const merged = { ...theirs };
+    for (const [id, mine] of Object.entries(state.items)) {
+      if (!merged[id] || mine.updated > merged[id].updated) merged[id] = mine;
+    }
+    state = { items: merged, sha: remoteSha, dirty: canonOrder(merged) !== canonOrder(theirs) };
+    saveOrder(state);
+  } else if (!remoteSha && state.sha) {
+    state = { ...state, sha: null, dirty: Object.keys(state.items).length > 0 };
+    saveOrder(state);
+  }
+  if (!state.dirty) return 0;
+  const sent = state.items;
+  const res = await api(cfg, `/repos/${cfg.repo}/contents/${ORDER_FILE}`, {
+    method: 'PUT',
+    body: JSON.stringify({
+      message: '노트 순서',
+      content: toBase64(JSON.stringify({ version: 1, items: sent })),
+      ...(state.sha ? { sha: state.sha } : {}),
+    }),
+  });
+  const now = loadOrder();
+  saveOrder({ ...now, sha: res.content.sha, dirty: canonOrder(now.items) !== canonOrder(sent) });
+  return 1;
+}
+
+function resetOrderSync() {
+  const state = loadOrder();
+  saveOrder({ ...state, sha: null, dirty: Object.keys(state.items).length > 0 });
+}
+
+function toggleOrderEditing() {
+  orderEditing = !orderEditing;
+  if (orderEditing) {
+    $('search').value = '';
+    activeTag = null;
+  }
+  $('order-edit').textContent = orderEditing ? '완료' : '순서 편집';
+  $('order-edit').classList.toggle('on', orderEditing);
+  $('order-hint').hidden = !orderEditing;
+  render();
+}
+
+// Same as dragging a to-do: only the handle starts it, and the neighbours move around the row.
+function startNoteDrag(e, li) {
+  if (e.pointerType === 'mouse' && e.button !== 0) return;
+  e.preventDefault();
+  const handle = e.currentTarget;
+  const list = $('list');
+  const section = li.dataset.section;
+  const ids = () => [...list.querySelectorAll(`li[data-section="${section}"]`)].map(x => x.dataset.note);
+  const before = ids().join();
+  let y = e.clientY;
+  handle.setPointerCapture(e.pointerId);
+  li.classList.add('dragging');
+  document.body.classList.add('list-dragging');
+  const same = x => x && x.dataset.section === section;
+  const middle = x => { const r = x.getBoundingClientRect(); return r.top + r.height / 2; };
+  const place = () => {
+    for (;;) {
+      const prev = li.previousElementSibling;
+      const next = li.nextElementSibling;
+      if (same(next) && middle(next) < y) list.insertBefore(next, li);
+      else if (same(prev) && middle(prev) > y) list.insertBefore(prev, next);
+      else break;
+    }
+  };
+  const scroller = setInterval(() => {
+    const r = list.getBoundingClientRect();
+    if (y < r.top + 50) list.scrollTop -= 10;
+    else if (y > r.bottom - 50) list.scrollTop += 10;
+    else return;
+    place();
+  }, 16);
+  const move = ev => { y = ev.clientY; place(); };
+  let ended = false;
+  const end = () => {
+    if (ended) return;
+    ended = true;
+    clearInterval(scroller);
+    for (const type of ['pointermove', 'pointerup', 'pointercancel', 'lostpointercapture']) handle.removeEventListener(type, type === 'pointermove' ? move : end);
+    li.classList.remove('dragging');
+    document.body.classList.remove('list-dragging');
+    const order = ids();
+    if (order.join() !== before) setOrders(Object.fromEntries(order.map((id, i) => [id, i])));
+    if (renderPending || order.join() !== before) render();
+  };
+  handle.addEventListener('pointermove', move);
+  handle.addEventListener('pointerup', end);
+  handle.addEventListener('pointercancel', end);
+  handle.addEventListener('lostpointercapture', end);
+}
+
 async function render() {
+  // A sync must not redraw the list under a finger dragging in it.
+  if (document.body.classList.contains('list-dragging')) { renderPending = true; return; }
+  renderPending = false;
   const all = (await getAll()).filter(n => !n.deleted && !n.trashed);
   // Blank notes stay hidden from the list unless they are the one being edited.
   const visible = all.filter(n => hasContent(n) || n.id === currentId);
+  const places = placeMissing(visible);
   const tags = [...new Set(visible.flatMap(n => tagsOf(`${n.title || ''} ${n.text}`)))].sort((a, b) => a.localeCompare(b, 'ko'));
   if (activeTag && !tags.includes(activeTag)) activeTag = null;
 
@@ -464,10 +683,11 @@ async function render() {
   const shown = visible
     .filter(n => !q || searchableText(n).includes(q))
     .filter(n => !activeTag || tagsOf(`${n.title || ''} ${n.text}`).includes(activeTag))
-    .sort((a, b) => b.updated.localeCompare(a.updated));
+    .sort((a, b) => places[a.id].order - places[b.id].order || b.updated.localeCompare(a.updated));
 
   const favorites = shown.filter(n => n.favorite);
   const others = shown.filter(n => !n.favorite);
+  $('order-edit').hidden = shown.length < 2 && !orderEditing;
   const label = text => {
     const li = document.createElement('li');
     li.className = 'label';
@@ -476,6 +696,8 @@ async function render() {
   };
   const row = n => {
     const li = document.createElement('li');
+    li.dataset.note = n.id;
+    li.dataset.section = n.favorite ? 'favorite' : 'note';
     const b = document.createElement('button');
     b.type = 'button';
     b.className = n.id === currentId ? 'note on' : 'note';
@@ -485,6 +707,16 @@ async function render() {
     appendSnippet(sub, n, q);
     b.append(title, sub);
     b.onclick = () => openNote(n.id);
+    // Not while searching: a filtered list would number only the notes it shows.
+    if (orderEditing && !q && !activeTag) {
+      const handle = document.createElement('span');
+      handle.className = 'todo-handle list-handle';
+      handle.title = '끌어서 순서 바꾸기';
+      handle.setAttribute('aria-hidden', 'true');
+      handle.addEventListener('pointerdown', e => startNoteDrag(e, li));
+      li.append(b, handle);
+      return li;
+    }
     const star = document.createElement('button');
     star.type = 'button';
     star.className = n.favorite ? 'star on' : 'star';
@@ -528,7 +760,7 @@ async function render() {
 function onEdit() {
   if (loading) return;
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(flushEditor, 600);
+  saveTimer = setTimeout(() => { decorateVideos(); flushEditor(); }, 600);
   if (!$('find-bar').hidden) scheduleFind();
 }
 
@@ -575,6 +807,7 @@ async function loadIntoEditor(n, keepPlace) {
   const place = keepPlace ? editor.selection.getBookmark(2, true) : null;
   editor.setContent(html);
   linkifyText(editor.getBody());
+  decorateVideos();
   if (place) { try { editor.selection.moveToBookmark(place); } catch { /* the text moved away */ } }
   editor.undoManager.clear();
   loading = false;
@@ -603,6 +836,7 @@ async function toggleFavorite(id) {
     return n;
   });
   if (note && id === currentId) showFavorite(note);
+  if (note) putOnTop(id);
   await render();
   scheduleSync(1000);
 }
@@ -680,6 +914,7 @@ async function createNote() {
   await discardIfBlank();
   const n = makeNote('');
   await updateNote(n.id, () => n);
+  putOnTop(n.id);
   await showNote(n, false);
   $('note-title').focus();
 }
@@ -744,6 +979,7 @@ async function renderTrash() {
     restore.textContent = '복구';
     restore.onclick = async () => {
       await setTrashed(n.id, false);
+      putOnTop(n.id);
       toast(`'${titleOf(n).slice(0, 20)}' 노트를 복구했어요.`);
       await render();
       scheduleSync(500);
@@ -1018,18 +1254,20 @@ async function readTree(cfg, repo) {
   const images = new Map();
   const vault = new Map();
   let todos = null;
+  let order = null;
   let tree;
   try {
     tree = await api(cfg, `/repos/${cfg.repo}/git/trees/${encodeURIComponent(repo.default_branch)}?recursive=1`);
   } catch (e) {
     // Only a repository with no commits yet may count as empty; any other failure must stop the sync.
-    if (e.status === 409 || (e.status === 404 && repo.size === 0)) return { notes, images, vault, todos };
+    if (e.status === 409 || (e.status === 404 && repo.size === 0)) return { notes, images, vault, todos, order };
     throw e;
   }
   if (tree.truncated) throw new Error('truncated');
   for (const item of tree.tree) {
     if (item.type !== 'blob') continue;
     if (item.path === TODO_FILE) todos = item.sha;
+    if (item.path === ORDER_FILE) order = item.sha;
     const note = item.path.match(/^notes\/([\w-]+)\.html$/);
     const image = item.path.match(/^images\/([0-9a-f]+\.(?:jpg|png|gif))$/);
     const secret = item.path.match(/^vault\/([\w-]+)\.json$/);
@@ -1037,7 +1275,7 @@ async function readTree(cfg, repo) {
     else if (image) images.set(image[1], item.sha);
     else if (secret) vault.set(secret[1], item.sha);
   }
-  return { notes, images, vault, todos };
+  return { notes, images, vault, todos, order };
 }
 
 const MIME = { jpg: 'image/jpeg', png: 'image/png', gif: 'image/gif' };
@@ -1109,6 +1347,7 @@ async function adoptRepository(repo) {
     }
     await resetVaultSync();
     resetTodoSync();
+    resetOrderSync();
   }
   localStorage.setItem(REPO_ID_KEY, String(repo.id));
 }
@@ -1165,6 +1404,7 @@ async function syncOnce(cfg) {
   more = more || vaultResult.more;
 
   uploads += await syncTodos(cfg, remoteTree.todos);
+  uploads += await syncOrder(cfg, remoteTree.order);
 
   for (const note of locals) {
     const remoteSha = remote.get(note.id);
@@ -1453,6 +1693,15 @@ for (const id of ['search', 'find-input', 'vault-search']) {
   box.addEventListener('blur', () => { box.readOnly = true; });
 }
 $('search').addEventListener('input', render);
+// Each search box has its own ✕, shown while it holds text, which the browser's own hides on blur.
+for (const button of document.querySelectorAll('[data-clear]')) {
+  button.onclick = () => {
+    const box = $(button.dataset.clear);
+    box.value = '';
+    box.dispatchEvent(new Event('input'));
+  };
+}
+$('order-edit').onclick = toggleOrderEditing;
 // Moving a note to the trash sits in a menu, away from where the thumb rests.
 function toggleNoteMenu(open) {
   $('note-menu').hidden = !open;

@@ -609,6 +609,12 @@ function setFormEditing(editing) {
   $('vault-delete').textContent = '삭제';
   $('vault-delete').dataset.armed = '';
   $('vault-cancel').textContent = editing ? '취소' : '목록';
+  // When only looking, empty fields are left out instead of showing as blank boxes.
+  for (const id of ['vault-site', 'vault-url', 'vault-username', 'vault-memo']) $(id).closest('label').hidden = !editing && !$(id).value;
+  const noPassword = !editing && !$('vault-password').value;
+  $('vault-password').closest('.field-row').hidden = noPassword;
+  $('vault').querySelector('label[for="vault-password"]').hidden = noPassword;
+  for (const id of ['vault-site', 'vault-url', 'vault-username', 'vault-password', 'vault-memo']) $(id).tabIndex = editing ? 0 : -1;
 }
 
 function openForm(entry) {
