@@ -12,6 +12,7 @@
   --urgent: #a83a2a;
   --urgent-bg: rgb(168 58 42 / 6%);
   --handle: #8a847a;
+  --card: #efebe2;
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -27,6 +28,7 @@
     --urgent: #c8704e;
     --urgent-bg: rgb(200 112 78 / 9%);
     --handle: #d4cec3;
+    --card: #2d2b28;
   }
 }
 * { box-sizing: border-box; }
@@ -132,9 +134,27 @@ body.resizing #main { pointer-events: none; }
 .list-tools button.on { color: var(--accent); font-weight: 700; }
 /* A folder's notes sit indented under it, one level only. */
 .folder-notes { margin: 0; padding: 0; list-style: none; }
-#list .folder-notes button.note { min-height: 56px; padding-left: 36px; }
-#list .folder-notes li.label { padding-left: 36px; }
-#list .folder-head strong { font-weight: 700; }
+#list .folder-notes button.note { min-height: 56px; padding-left: 40px; }
+#list .folder-notes li.label { padding-left: 40px; }
+/* A grey chevron alone marks a folder; it turns down when the folder is open. */
+#list .folder-head strong::before {
+  content: '›';
+  display: inline-block;
+  width: 18px;
+  margin-right: 6px;
+  color: var(--muted);
+  font-size: 22px;
+  font-weight: 400;
+  line-height: 1;
+  text-align: center;
+  transition: transform 0.15s;
+}
+#list .folder-head[aria-expanded="true"] strong::before { transform: rotate(90deg); }
+#list .folder-head span { padding-left: 24px; }
+/* Favourites sit together on a card, apart from the plain note list. */
+#list li.fav-card { margin: 2px 10px 6px; background: var(--card); border-radius: 12px; overflow: hidden; }
+.fav-list { margin: 0; padding: 0; list-style: none; }
+#list .fav-list > li:first-child > button { border-top: 0; }
 .choices { margin: 0 0 12px; padding: 0; list-style: none; }
 .choices button { width: 100%; min-height: 44px; margin-bottom: 6px; text-align: left; }
 #folder-create { margin-top: 8px; }
@@ -179,6 +199,7 @@ body.list-dragging, body.list-dragging * { cursor: grabbing; user-select: none; 
   font-size: 12px;
   font-weight: 700;
 }
+#list > li.label { padding: 20px 16px 8px; font-size: 13px; }
 #list button.note { padding-right: 48px; }
 #list button.star {
   position: absolute;
@@ -187,6 +208,7 @@ body.list-dragging, body.list-dragging * { cursor: grabbing; user-select: none; 
   width: 40px;
   min-height: 40px;
   padding: 0;
+  background: none;
   border: 0;
   font-size: 18px;
   text-align: center;

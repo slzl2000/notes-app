@@ -873,7 +873,7 @@ async function render() {
     b.className = 'folder-head';
     b.setAttribute('aria-expanded', String(isOpen));
     const title = document.createElement('strong');
-    title.textContent = `${isOpen ? '▾' : '▸'} 📁 ${f.name}`;
+    title.textContent = f.name;
     const count = document.createElement('span');
     count.textContent = `노트 ${kids.length}개${editingOrder ? ' · 눌러서 이름 바꾸기·삭제' : ''}`;
     b.append(title, count);
@@ -896,6 +896,16 @@ async function render() {
     return li;
   };
   const row = section => item => (item.kind === 'folder' ? folderRow(item, section) : noteRow(item, section));
+  // Favourite rows share one card; dragging still moves them among their own siblings.
+  const favCard = () => {
+    const li = document.createElement('li');
+    li.className = 'fav-card';
+    const ul = document.createElement('ul');
+    ul.className = 'fav-list';
+    ul.append(...favorites.map(row('favorite')));
+    li.append(ul);
+    return li;
+  };
   const vaultHits = q && !activeTag ? readVaultIndex().filter(e => `${e.site}\n${e.url}`.toLowerCase().includes(q)) : [];
   const vaultRow = e => {
     const li = document.createElement('li');
@@ -913,7 +923,7 @@ async function render() {
   $('list').replaceChildren(
     // todo.js may still be loading on the first draw; it draws the list again once it is in.
     ...(q || activeTag || typeof todoEntry !== 'function' ? [] : [todoEntry()]),
-    ...(favorites.length ? [label('즐겨찾기'), ...favorites.map(row('favorite'))] : []),
+    ...(favorites.length ? [label('즐겨찾기'), favCard()] : []),
     ...(favorites.length && others.length ? [label('노트')] : []),
     ...others.map(row('note')),
     ...(vaultHits.length ? [label('금고'), ...vaultHits.map(vaultRow)] : []),
