@@ -130,6 +130,14 @@ body.resizing #main { pointer-events: none; }
 .list-tools { display: flex; align-items: center; gap: 8px; min-height: 0; padding: 0 8px 0 16px; }
 .list-tools button { min-height: 30px; margin-left: auto; padding: 0 8px; color: var(--muted); }
 .list-tools button.on { color: var(--accent); font-weight: 700; }
+/* A folder's notes sit indented under it, one level only. */
+.folder-notes { margin: 0; padding: 0; list-style: none; }
+#list .folder-notes button.note { min-height: 56px; padding-left: 36px; }
+#list .folder-notes li.label { padding-left: 36px; }
+#list .folder-head strong { font-weight: 700; }
+.choices { margin: 0 0 12px; padding: 0; list-style: none; }
+.choices button { width: 100%; min-height: 44px; margin-bottom: 6px; text-align: left; }
+#folder-create { margin-top: 8px; }
 #list .list-handle { position: absolute; top: 10px; right: 6px; display: grid; overflow: visible; }
 #list li.dragging { z-index: 1; background: var(--selected); box-shadow: 0 3px 10px rgb(0 0 0 / 25%); }
 body.list-dragging, body.list-dragging * { cursor: grabbing; user-select: none; -webkit-user-select: none; }
@@ -466,11 +474,26 @@ body.todo-dragging, body.todo-dragging * { cursor: grabbing; user-select: none; 
   padding-inline: 0;
   background: transparent;
   border-color: transparent;
+  color: var(--text);
   outline: 0;
   box-shadow: none;
   cursor: text;
 }
-#vault-form.viewing label { color: var(--muted); }
+/* Viewing: the site name is the title; each field is a small grey name over its value, ruled off. */
+#vault-form.viewing label, #vault-form.viewing .field-row {
+  margin: 0;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 12px;
+}
+#vault-form.viewing label[for] { padding-bottom: 0; border-bottom: 0; }
+#vault-form.viewing .field-row { margin-top: -4px; padding-top: 0; }
+#vault-form.viewing .site-field { padding-top: 4px; font-size: 0; }
+#vault-form.viewing .site-field input { margin: 0; padding-block: 0; font-size: 22px; font-weight: 700; }
+#vault-form.viewing input:not(#vault-site), #vault-form.viewing textarea { margin-top: 2px; padding-block: 2px; font-size: 16px; }
+#vault-form.viewing .field-row input { flex: 0 1 14em; }
+#vault-form.viewing .row { margin-top: 16px; }
 dialog label[for] { margin-bottom: 0; }
 .field-row { display: flex; gap: 6px; margin: 4px 0 12px; }
 dialog .field-row input { flex: 1; min-width: 0; margin-top: 0; }

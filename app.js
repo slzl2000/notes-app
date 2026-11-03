@@ -530,22 +530,140 @@ function loadOrder() {
   return { items: {}, sha: null, dirty: false };
 }
 const saveOrder = state => localStorage.setItem(ORDER_KEY, JSON.stringify(state));
-const canonOrder = items => JSON.stringify(Object.keys(items).sort().map(id => [id, items[id].order, items[id].updated]));
+const canonOrder = items => JSON.stringify(Object.keys(items).sort().map(id => [id, Object.keys(items[id]).sort().map(k => [k, items[id][k]])]));
 
-function setOrders(orders) {
+// Each entry is a note's place ({ order, parent }) or a folder ({ kind: 'folder', name, favorite,
+// order, deleted }); the most recent change to an entry wins when devices merge.
+function editPlaces(changes) {
   const state = loadOrder();
   const now = new Date().toISOString();
-  for (const [id, order] of Object.entries(orders)) state.items[id] = { order, updated: now };
+  for (const [id, fields] of Object.entries(changes)) state.items[id] = { ...state.items[id], ...fields, updated: now };
   state.dirty = true;
   saveOrder(state);
   scheduleSync(3000);
 }
+const setOrders = orders => editPlaces(Object.fromEntries(Object.entries(orders).map(([id, order]) => [id, { order }])));
+const topOrderValue = () => Math.min(0, ...Object.values(loadOrder().items).map(i => i.order)) - 1;
 
-// New notes, and notes that change section (a favourite added or removed, a note restored),
-// go to the top.
+// New notes, and notes or folders that change section (a favourite added or removed, a note
+// restored or moved into a folder), go to the top.
 function putOnTop(id) {
-  const orders = Object.values(loadOrder().items).map(i => i.order);
-  setOrders({ [id]: Math.min(0, ...orders) - 1 });
+  setOrders({ [id]: topOrderValue() });
+}
+
+// ---------- Folders ----------
+// One level: a folder holds notes, never folders. Notes in a folder cannot be favourites; the
+// folder itself can, and then moves to the favourites as a whole.
+
+const OPEN_FOLDERS_KEY = 'notes.openFolders';
+
+function liveFolders(items = loadOrder().items) {
+  return Object.entries(items)
+    .filter(([, i]) => i.kind === 'folder' && !i.deleted)
+    .map(([id, i]) => ({ id, ...i }))
+    .sort((a, b) => a.order - b.order);
+}
+
+function folderOf(id, items = loadOrder().items) {
+  const parent = items[id] && items[id].parent;
+  const folder = parent && items[parent];
+  return folder && folder.kind === 'folder' && !folder.deleted ? { id: parent, ...folder } : null;
+}
+
+function openFolders() {
+  try { return new Set(JSON.parse(localStorage.getItem(OPEN_FOLDERS_KEY)) || []); } catch { return new Set(); }
+}
+
+function toggleFolderOpen(id) {
+  const open = openFolders();
+  if (open.has(id)) open.delete(id);
+  else open.add(id);
+  localStorage.setItem(OPEN_FOLDERS_KEY, JSON.stringify([...open]));
+  render();
+}
+
+async function moveToFolder(noteId, folderId) {
+  const note = await getNote(noteId);
+  if (!note) return;
+  editPlaces({ [noteId]: { parent: folderId || '', order: topOrderValue() } });
+  if (folderId && note.favorite) {
+    await toggleFavorite(noteId, true);
+    toast('즐겨찾기를 해제하고 폴더로 옮겼어요.');
+  } else if (folderId) {
+    toast(`'${loadOrder().items[folderId].name}' 폴더로 옮겼어요.`);
+  } else {
+    toast('폴더 밖으로 꺼냈어요.');
+  }
+  if (folderId) {
+    const open = openFolders();
+    open.add(folderId);
+    localStorage.setItem(OPEN_FOLDERS_KEY, JSON.stringify([...open]));
+  }
+  if (noteId === currentId) showFavorite(note);
+  await render();
+}
+
+function openFolderMove() {
+  toggleNoteMenu(false);
+  if (!currentId) return;
+  const current = folderOf(currentId);
+  const choices = [];
+  if (current) choices.push({ id: '', name: '폴더 밖으로 꺼내기' });
+  for (const f of liveFolders()) if (!current || f.id !== current.id) choices.push({ id: f.id, name: `📁 ${f.name}` });
+  $('folder-choices').replaceChildren(...choices.map(c => {
+    const li = document.createElement('li');
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = c.name;
+    b.onclick = () => { $('folder-move').close(); moveToFolder(currentId, c.id); };
+    li.append(b);
+    return li;
+  }));
+  $('folder-new').value = '';
+  $('folder-move').showModal();
+}
+
+function createFolder(e) {
+  e.preventDefault();
+  const name = $('folder-new').value.trim();
+  if (!name || !currentId) return;
+  const id = newId();
+  editPlaces({ [id]: { kind: 'folder', name, favorite: false, deleted: '', order: topOrderValue() } });
+  $('folder-move').close();
+  moveToFolder(currentId, id);
+}
+
+let editingFolderId = null;
+function openFolderEdit(id) {
+  editingFolderId = id;
+  $('folder-name').value = loadOrder().items[id].name;
+  $('folder-edit').showModal();
+}
+
+function saveFolderName() {
+  const name = $('folder-name').value.trim();
+  if (name && editingFolderId) editPlaces({ [editingFolderId]: { name } });
+  $('folder-edit').close();
+  render();
+}
+
+// The notes inside come out to the top level; nothing is deleted but the folder.
+function deleteFolder() {
+  const id = editingFolderId;
+  if (!id) return;
+  const items = loadOrder().items;
+  const changes = { [id]: { deleted: new Date().toISOString() } };
+  for (const [noteId, entry] of Object.entries(items)) if (entry.parent === id) changes[noteId] = { parent: '' };
+  editPlaces(changes);
+  $('folder-edit').close();
+  toast('폴더를 삭제했어요. 안의 노트는 바깥으로 나왔어요.');
+  render();
+}
+
+function toggleFolderFavorite(id) {
+  const folder = loadOrder().items[id];
+  editPlaces({ [id]: { favorite: !folder.favorite, order: topOrderValue() } });
+  render();
 }
 
 // Notes without a place yet (all of them on first use, or one that arrived before the order
@@ -555,7 +673,7 @@ function placeMissing(notes) {
   const missing = notes.filter(n => !state.items[n.id]).sort((a, b) => b.updated.localeCompare(a.updated));
   if (!missing.length) return state.items;
   let next = Math.max(-1, ...Object.values(state.items).map(i => i.order)) + 1;
-  for (const n of missing) state.items[n.id] = { order: next++, updated: '' };
+  for (const n of missing) state.items[n.id] = { order: next++, parent: '', updated: '' };
   state.dirty = true;
   saveOrder(state);
   return state.items;
@@ -614,9 +732,11 @@ function startNoteDrag(e, li) {
   if (e.pointerType === 'mouse' && e.button !== 0) return;
   e.preventDefault();
   const handle = e.currentTarget;
-  const list = $('list');
+  // Rows move among their own siblings: top-level rows in a section, or notes inside one folder.
+  const list = li.parentElement;
+  const scrollBox = $('list');
   const section = li.dataset.section;
-  const ids = () => [...list.querySelectorAll(`li[data-section="${section}"]`)].map(x => x.dataset.note);
+  const ids = () => [...list.children].filter(x => x.dataset.section === section).map(x => x.dataset.note);
   const before = ids().join();
   let y = e.clientY;
   handle.setPointerCapture(e.pointerId);
@@ -634,9 +754,9 @@ function startNoteDrag(e, li) {
     }
   };
   const scroller = setInterval(() => {
-    const r = list.getBoundingClientRect();
-    if (y < r.top + 50) list.scrollTop -= 10;
-    else if (y > r.bottom - 50) list.scrollTop += 10;
+    const r = scrollBox.getBoundingClientRect();
+    if (y < r.top + 50) scrollBox.scrollTop -= 10;
+    else if (y > r.bottom - 50) scrollBox.scrollTop += 10;
     else return;
     place();
   }, 16);
@@ -685,48 +805,97 @@ async function render() {
     .filter(n => !activeTag || tagsOf(`${n.title || ''} ${n.text}`).includes(activeTag))
     .sort((a, b) => places[a.id].order - places[b.id].order || b.updated.localeCompare(a.updated));
 
-  const favorites = shown.filter(n => n.favorite);
-  const others = shown.filter(n => !n.favorite);
-  $('order-edit').hidden = shown.length < 2 && !orderEditing;
+  // Searching lists matching notes flat, each with its folder; otherwise folders hold their notes.
+  const flat = Boolean(q || activeTag);
+  const folders = flat ? [] : liveFolders(places);
+  const inFolder = n => folderOf(n.id, places);
+  const top = shown.filter(n => flat || !inFolder(n));
+  const childrenOf = id => shown.filter(n => !flat && places[n.id].parent === id);
+  const byPlace = (a, b) => places[a.id].order - places[b.id].order;
+  const favorites = [...top.filter(n => n.favorite && !inFolder(n)), ...folders.filter(f => f.favorite)].sort(byPlace);
+  const others = [...top.filter(n => !n.favorite || inFolder(n)), ...folders.filter(f => !f.favorite)].sort(byPlace);
+  $('order-edit').hidden = shown.length + folders.length < 2 && !orderEditing;
+  const editingOrder = orderEditing && !flat; // a filtered list would number only the notes it shows
+  const handleFor = li => {
+    const handle = document.createElement('span');
+    handle.className = 'todo-handle list-handle';
+    handle.title = '끌어서 순서 바꾸기';
+    handle.setAttribute('aria-hidden', 'true');
+    handle.addEventListener('pointerdown', e => startNoteDrag(e, li));
+    return handle;
+  };
+  const open = openFolders();
   const label = text => {
     const li = document.createElement('li');
     li.className = 'label';
     li.textContent = text;
     return li;
   };
-  const row = n => {
+  const starButton = (on, onclick) => {
+    const star = document.createElement('button');
+    star.type = 'button';
+    star.className = on ? 'star on' : 'star';
+    star.textContent = on ? '★' : '☆';
+    star.setAttribute('aria-label', on ? '즐겨찾기 해제' : '즐겨찾기');
+    star.setAttribute('aria-pressed', String(Boolean(on)));
+    star.onclick = onclick;
+    return star;
+  };
+  const noteRow = (n, section) => {
     const li = document.createElement('li');
     li.dataset.note = n.id;
-    li.dataset.section = n.favorite ? 'favorite' : 'note';
+    li.dataset.section = section;
     const b = document.createElement('button');
     b.type = 'button';
     b.className = n.id === currentId ? 'note on' : 'note';
     const title = document.createElement('strong');
     title.textContent = titleOf(n);
     const sub = document.createElement('span');
+    const folder = flat && inFolder(n);
+    if (folder) sub.append(`📁 ${folder.name} · `);
     appendSnippet(sub, n, q);
     b.append(title, sub);
     b.onclick = () => openNote(n.id);
-    // Not while searching: a filtered list would number only the notes it shows.
-    if (orderEditing && !q && !activeTag) {
-      const handle = document.createElement('span');
-      handle.className = 'todo-handle list-handle';
-      handle.title = '끌어서 순서 바꾸기';
-      handle.setAttribute('aria-hidden', 'true');
-      handle.addEventListener('pointerdown', e => startNoteDrag(e, li));
-      li.append(b, handle);
-      return li;
-    }
-    const star = document.createElement('button');
-    star.type = 'button';
-    star.className = n.favorite ? 'star on' : 'star';
-    star.textContent = n.favorite ? '★' : '☆';
-    star.setAttribute('aria-label', n.favorite ? '즐겨찾기 해제' : '즐겨찾기');
-    star.setAttribute('aria-pressed', String(Boolean(n.favorite)));
-    star.onclick = () => toggleFavorite(n.id);
-    li.append(b, star);
+    li.append(b);
+    if (editingOrder) li.append(handleFor(li));
+    else if (!inFolder(n)) li.append(starButton(n.favorite, () => toggleFavorite(n.id)));
     return li;
   };
+  const folderRow = (f, section) => {
+    const li = document.createElement('li');
+    li.className = 'folder';
+    li.dataset.note = f.id;
+    li.dataset.section = section;
+    const kids = childrenOf(f.id);
+    const isOpen = open.has(f.id);
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'folder-head';
+    b.setAttribute('aria-expanded', String(isOpen));
+    const title = document.createElement('strong');
+    title.textContent = `${isOpen ? '▾' : '▸'} 📁 ${f.name}`;
+    const count = document.createElement('span');
+    count.textContent = `노트 ${kids.length}개${editingOrder ? ' · 눌러서 이름 바꾸기·삭제' : ''}`;
+    b.append(title, count);
+    b.onclick = () => (editingOrder ? openFolderEdit(f.id) : toggleFolderOpen(f.id));
+    li.append(b);
+    if (editingOrder) li.append(handleFor(li));
+    else li.append(starButton(f.favorite, () => toggleFolderFavorite(f.id)));
+    if (isOpen) {
+      const ul = document.createElement('ul');
+      ul.className = 'folder-notes';
+      ul.append(...kids.map(n => noteRow(n, `in:${f.id}`)));
+      if (!kids.length) {
+        const none = document.createElement('li');
+        none.className = 'label';
+        none.textContent = '비어 있어요. 노트의 ⋯ 메뉴에서 이 폴더로 옮기세요.';
+        ul.append(none);
+      }
+      li.append(ul);
+    }
+    return li;
+  };
+  const row = section => item => (item.kind === 'folder' ? folderRow(item, section) : noteRow(item, section));
   const vaultHits = q && !activeTag ? readVaultIndex().filter(e => `${e.site}\n${e.url}`.toLowerCase().includes(q)) : [];
   const vaultRow = e => {
     const li = document.createElement('li');
@@ -744,9 +913,9 @@ async function render() {
   $('list').replaceChildren(
     // todo.js may still be loading on the first draw; it draws the list again once it is in.
     ...(q || activeTag || typeof todoEntry !== 'function' ? [] : [todoEntry()]),
-    ...(favorites.length ? [label('즐겨찾기'), ...favorites.map(row)] : []),
+    ...(favorites.length ? [label('즐겨찾기'), ...favorites.map(row('favorite'))] : []),
     ...(favorites.length && others.length ? [label('노트')] : []),
-    ...others.map(row),
+    ...others.map(row('note')),
     ...(vaultHits.length ? [label('금고'), ...vaultHits.map(vaultRow)] : []),
   );
 
@@ -821,13 +990,16 @@ async function loadIntoEditor(n, keepPlace) {
 
 function showFavorite(n) {
   const star = $('favorite');
+  star.hidden = Boolean(folderOf(n.id)); // a note in a folder cannot be a favourite
   star.textContent = n.favorite ? '★' : '☆';
   star.classList.toggle('on', Boolean(n.favorite));
   star.setAttribute('aria-pressed', String(Boolean(n.favorite)));
 }
 
-// Marking a favorite is not an edit, so the note keeps its place and its date.
-async function toggleFavorite(id) {
+// Marking a favorite is not an edit, so the note keeps its date. Unstarring it on the way into
+// a folder leaves the place the folder move gave it.
+async function toggleFavorite(id, intoFolder) {
+  if (!intoFolder && folderOf(id)) return;
   const note = await updateNote(id, n => {
     if (!n) return;
     n.favorite = !n.favorite;
@@ -836,7 +1008,7 @@ async function toggleFavorite(id) {
     return n;
   });
   if (note && id === currentId) showFavorite(note);
-  if (note) putOnTop(id);
+  if (note && !intoFolder) putOnTop(id);
   await render();
   scheduleSync(1000);
 }
@@ -1702,6 +1874,13 @@ for (const button of document.querySelectorAll('[data-clear]')) {
   };
 }
 $('order-edit').onclick = toggleOrderEditing;
+$('move-to-folder').onclick = openFolderMove;
+$('folder-create').addEventListener('submit', createFolder);
+$('folder-move-close').onclick = () => $('folder-move').close();
+$('folder-save').onclick = saveFolderName;
+$('folder-name').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); saveFolderName(); } });
+$('folder-delete').onclick = deleteFolder;
+$('folder-edit-close').onclick = () => $('folder-edit').close();
 // Moving a note to the trash sits in a menu, away from where the thumb rests.
 function toggleNoteMenu(open) {
   $('note-menu').hidden = !open;

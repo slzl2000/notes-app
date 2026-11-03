@@ -50,6 +50,7 @@
       <button id="find-open" class="icon" type="button" aria-label="이 노트에서 찾기">⌕</button>
       <button id="note-more" class="icon" type="button" aria-label="더 보기" aria-haspopup="menu" aria-expanded="false">⋯</button>
       <div id="note-menu" class="menu" role="menu" hidden>
+        <button id="move-to-folder" type="button" role="menuitem">폴더로 이동</button>
         <button id="delete" class="danger" type="button" role="menuitem">휴지통으로 옮기기</button>
       </div>
     </header>
@@ -103,6 +104,27 @@
   <div class="row end">
     <button id="confirm-no" type="button">취소</button>
     <button id="confirm-yes" class="primary danger-bg" type="button">휴지통으로</button>
+  </div>
+</dialog>
+
+<dialog id="folder-move" aria-label="폴더로 이동">
+  <h2>폴더로 이동</h2>
+  <ul id="folder-choices" class="choices"></ul>
+  <form id="folder-create" class="field-row" autocomplete="off">
+    <input id="folder-new" placeholder="새 폴더 이름" aria-label="새 폴더 이름" autocomplete="off">
+    <button type="submit">만들고 이동</button>
+  </form>
+  <div class="row end"><button id="folder-move-close" type="button">닫기</button></div>
+</dialog>
+
+<dialog id="folder-edit" aria-label="폴더 편집">
+  <h2>폴더 편집</h2>
+  <label>폴더 이름<input id="folder-name" autocomplete="off"></label>
+  <p class="muted small">폴더를 삭제해도 안의 노트는 지워지지 않고 바깥으로 나와요.</p>
+  <div class="row end">
+    <button id="folder-delete" class="text danger" type="button">폴더 삭제</button>
+    <button id="folder-edit-close" type="button">취소</button>
+    <button id="folder-save" class="primary" type="button">저장</button>
   </div>
 </dialog>
 
@@ -257,7 +279,7 @@
 
     <form id="vault-form" class="vault-panel" autocomplete="off" hidden>
       <p id="vault-form-hint" class="muted small">사이트명과 사이트 주소 중 하나는 꼭 적어 주세요. 나머지 칸은 비워도 돼요.</p>
-      <label>사이트명<input id="vault-site" autocomplete="off"></label>
+      <label class="site-field">사이트명<input id="vault-site" autocomplete="off"></label>
       <label>사이트 주소<input id="vault-url" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
       <div id="vault-url-link" class="chips"></div>
       <div id="vault-similar" class="chips"></div>
