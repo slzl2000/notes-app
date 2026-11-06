@@ -14,6 +14,7 @@
   --text-soft: #4b4741;
   --handle: #a19b91;
   --card: #f5f2eb;
+  --edge: #aba69c;
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -31,6 +32,7 @@
     --text-soft: #c6c2b9;
     --handle: #8a857b;
     --card: #292826;
+    --edge: #6c685f;
   }
 }
 * { box-sizing: border-box; }
@@ -158,9 +160,12 @@ body.resizing #main { pointer-events: none; }
 }
 #list .folder-head[aria-expanded="true"] strong::after { transform: translateY(2px) rotate(-135deg); }
 /* Favourites share one grey band across the full width, opened by its own heading. */
-#list li.fav-card { background: var(--card); }
-.fav-label { padding: 20px 16px 8px; color: var(--muted); font-size: 13px; font-weight: 700; }
+#list li.fav-card { background: var(--card); border-top: 1px solid var(--edge); border-bottom: 1px solid var(--edge); }
+.fav-label { padding: 8px 16px 4px; color: var(--muted); font-size: 13px; font-weight: 700; }
 .fav-label b { color: var(--accent); }
+/* ★ and the notepad sit in one slot, so both headings start their words in line. */
+.head-icon { display: inline-block; width: 16px; margin-right: 4px; text-align: center; }
+.head-icon svg { display: inline-block; width: 13px; height: 13px; vertical-align: -1px; fill: none; stroke: currentColor; stroke-width: 1.3; stroke-linecap: round; }
 .fav-list { margin: 0; padding: 0; list-style: none; }
 .folder-fav { width: 100%; min-height: 44px; margin-bottom: 12px; text-align: left; }
 /* The note's own star is the only place a note is starred, so it gets a little more room. */
@@ -209,7 +214,20 @@ body.list-dragging, body.list-dragging * { cursor: grabbing; user-select: none; 
   font-size: 12px;
   font-weight: 700;
 }
-#list > li.label { padding: 20px 16px 8px; font-size: 13px; }
+#list > li.label { padding: 8px 16px 4px; font-size: 13px; }
+#list button.with-thumb { padding-right: 76px; }
+#list img.thumb {
+  position: absolute;
+  top: 50%;
+  right: 16px;
+  width: 48px;
+  height: 48px;
+  margin-top: -24px;
+  border-radius: 8px;
+  background: var(--line);
+  object-fit: cover;
+  pointer-events: none;
+}
 #list button.note.with-handle, #list button.folder-head { padding-right: 48px; }
 #list button.folder-more {
   position: absolute;
@@ -415,6 +433,7 @@ dialog#vault .bar, dialog#todo .bar {
 dialog .todo-add input { flex: 1; min-width: 0; margin: 0; }
 dialog .todo-add select { flex: none; width: auto; margin: 0; padding: 8px 6px; }
 .todo-add button { flex: none; }
+.todo-add button.primary { background: transparent; color: var(--accent); }
 .todo-section h2, .todo-section summary { margin: 20px 0 6px; font-size: 15px; font-weight: 700; }
 .todo-section summary { cursor: pointer; }
 .todo-section > .muted { margin: 4px 0 0; }

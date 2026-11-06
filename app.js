@@ -3,9 +3,10 @@
 const $ = id => document.getElementById(id);
 const CFG_KEY = 'notes.config';
 const REPO_ID_KEY = 'notes.repoId';
-// Site names and addresses of vault entries, unencrypted and on this device only, so the main
-// search can find them while the vault is locked. IDs, passwords and memos are never in it.
-const VAULT_INDEX_KEY = 'notes.vaultIndex';
+// Older versions kept vault site names here, unencrypted, for the main search.
+localStorage.removeItem('notes.vaultIndex');
+// Set just before the app reloads itself for an update, so it comes back to the list it was on.
+const STAY_ON_LIST_KEY = 'notes.stayOnList';
 const MAX_UPLOADS_PER_CYCLE = 50; // GitHub limits content creation to about 80 writes a minute
 const MAX_IMAGE_SIDE = 1600;
 const IMAGE_PATH = /^\.\.\/images\/([0-9a-f]+\.(?:jpg|png|gif))$/;
@@ -360,6 +361,112 @@ function youtubeId(href) {
   return { id, start };
 }
 
+// ---------- List thumbnails ----------
+// A note's first image, or else its first YouTube video, shown small on its row in the list.
+// Image thumbnails are made once from the stored image and kept on this device only, in their
+// own database; they are never synced. Rows load theirs only when they scroll into view.
+
+const THUMB_SIDE = 144; // pixels: sharp at 48 points on a 3x screen
+const thumbUrls = new Map(); // image name → object URL of its thumbnail
+const thumbSources = new Map(); // note id → { body, src } for the body it was found in
+
+const thumbDb = new Promise(resolve => {
+  const req = indexedDB.open('notes-thumbs', 1);
+  req.onupgradeneeded = () => req.result.createObjectStore('thumbs');
+  req.onsuccess = () => resolve(req.result);
+  req.onerror = () => resolve(null); // no cache: thumbnails are made again each time
+});
+
+function thumbSource(n) {
+  const body = n.body || '';
+  const hit = thumbSources.get(n.id);
+  if (hit && hit.body === body) return hit.src;
+  let src = null;
+  const img = body.match(/<img\b[^>]*\bsrc="\.\.\/images\/([0-9a-f]+\.(?:jpg|png|gif))"/);
+  if (img) src = { image: img[1] };
+  else {
+    for (const m of body.matchAll(/\bhref="([^"]+)"/g)) {
+      const video = youtubeId(m[1].replace(/&amp;/g, '&'));
+      if (video) { src = { video: video.id }; break; }
+    }
+  }
+  thumbSources.set(n.id, { body, src });
+  return src;
+}
+
+async function thumbBlob(name) {
+  const db = await thumbDb;
+  const cached = db && await new Promise(resolve => {
+    const req = db.transaction('thumbs').objectStore('thumbs').get(name);
+    req.onsuccess = () => resolve(req.result || null);
+    req.onerror = () => resolve(null);
+  });
+  if (cached) return cached;
+  const image = await getImage(name);
+  if (!image) return null; // not downloaded yet; the list is drawn again when it arrives
+  const bitmap = await createImageBitmap(image.blob);
+  const side = Math.min(bitmap.width, bitmap.height);
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = Math.min(THUMB_SIDE, side);
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#fff'; // under transparent parts, which a JPEG would turn black
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(bitmap, (bitmap.width - side) / 2, (bitmap.height - side) / 2, side, side, 0, 0, canvas.width, canvas.height);
+  bitmap.close();
+  const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.8));
+  if (blob && db) db.transaction('thumbs', 'readwrite').objectStore('thumbs').put(blob, name);
+  return blob;
+}
+
+function dropThumb(img) {
+  const button = img.parentElement && img.parentElement.querySelector('button.with-thumb');
+  if (button) button.classList.remove('with-thumb');
+  img.remove();
+}
+
+async function loadThumb(img) {
+  const name = img.dataset.image;
+  let url = thumbUrls.get(name);
+  if (!url) {
+    const blob = await thumbBlob(name).catch(() => null);
+    if (blob) {
+      url = URL.createObjectURL(blob);
+      thumbUrls.set(name, url);
+    }
+  }
+  if (url) img.src = url;
+  else dropThumb(img);
+}
+
+const thumbObserver = new IntersectionObserver(entries => {
+  for (const e of entries) {
+    if (!e.isIntersecting) continue;
+    thumbObserver.unobserve(e.target);
+    loadThumb(e.target);
+  }
+}, { root: $('list'), rootMargin: '200px 0px' });
+
+function thumbFor(n) {
+  const src = thumbSource(n);
+  if (!src) return null;
+  const img = document.createElement('img');
+  img.className = 'thumb';
+  img.alt = '';
+  img.decoding = 'async';
+  img.onerror = () => dropThumb(img);
+  if (src.video) {
+    img.loading = 'lazy';
+    img.referrerPolicy = 'no-referrer';
+    img.src = `https://i.ytimg.com/vi/${src.video}/mqdefault.jpg`;
+  } else if (thumbUrls.has(src.image)) {
+    img.src = thumbUrls.get(src.image);
+  } else {
+    img.dataset.image = src.image;
+    thumbObserver.observe(img);
+  }
+  return img;
+}
+
 function decorateVideos() {
   if (!editor) return;
   const body = editor.getBody();
@@ -511,15 +618,6 @@ function appendSnippet(el, note, q) {
   );
 }
 
-function readVaultIndex() {
-  try {
-    const list = JSON.parse(localStorage.getItem(VAULT_INDEX_KEY) || '[]');
-    return Array.isArray(list) ? list : [];
-  } catch {
-    return [];
-  }
-}
-
 // ---------- Note order ----------
 // The list keeps the order it is dragged into. The order lives in its own repository file,
 // merged note by note like the to-do list, so reordering never rewrites the notes themselves.
@@ -556,6 +654,15 @@ const topOrderValue = () => Math.min(0, ...Object.values(loadOrder().items).map(
 // restored or moved into a folder), go to the top.
 function putOnTop(id) {
   setOrders({ [id]: topOrderValue() });
+}
+
+// An edited note goes to the top of its section, and its folder to the top of the folder's.
+// Once per opening, so typing does not keep rewriting the order.
+let raisedId = null;
+function raiseEdited(id) {
+  const top = topOrderValue();
+  const folder = folderOf(id);
+  setOrders(folder ? { [id]: top, [folder.id]: top - 1 } : { [id]: top });
 }
 
 // ---------- Folders ----------
@@ -868,6 +975,13 @@ async function render() {
     b.onclick = () => openNote(n.id);
     li.append(b);
     if (editingOrder) li.append(handleFor(li));
+    else {
+      const thumb = thumbFor(n);
+      if (thumb) {
+        b.classList.add('with-thumb');
+        li.append(thumb);
+      }
+    }
     return li;
   };
   const folderRow = (f, section) => {
@@ -905,6 +1019,15 @@ async function render() {
     }
     return li;
   };
+  const notesLabel = () => {
+    const li = label('');
+    li.classList.add('notes-label');
+    const icon = document.createElement('b');
+    icon.className = 'head-icon';
+    icon.innerHTML = '<svg viewBox="0 0 14 14" aria-hidden="true"><rect x="2.5" y="1.5" width="9" height="11" rx="1.5"/><path d="M5 5h4M5 7.5h4M5 10h2.5"/></svg>';
+    li.append(icon, '노트');
+    return li;
+  };
   const row = section => item => (item.kind === 'folder' ? folderRow(item, section) : noteRow(item, section));
   // Favourite rows share one card; dragging still moves them among their own siblings.
   const favCard = () => {
@@ -913,39 +1036,25 @@ async function render() {
     const head = document.createElement('div');
     head.className = 'fav-label';
     const star = document.createElement('b');
+    star.className = 'head-icon';
     star.textContent = '★';
-    head.append(star, ' 즐겨찾기');
+    head.append(star, '즐겨찾기');
     const ul = document.createElement('ul');
     ul.className = 'fav-list';
     ul.append(...favorites.map(row('favorite')));
     li.append(head, ul);
     return li;
   };
-  const vaultHits = q && !activeTag ? readVaultIndex().filter(e => `${e.site}\n${e.url}`.toLowerCase().includes(q)) : [];
-  const vaultRow = e => {
-    const li = document.createElement('li');
-    const b = document.createElement('button');
-    b.type = 'button';
-    const title = document.createElement('strong');
-    title.textContent = `🔒 ${e.site.trim() || e.url.trim()}`;
-    const sub = document.createElement('span');
-    sub.textContent = e.site.trim() && e.url.trim() ? e.url.trim() : '금고 항목 · 열려면 잠금 해제';
-    b.append(title, sub);
-    b.onclick = () => openVaultEntry(e.id);
-    li.append(b);
-    return li;
-  };
   $('list').replaceChildren(
     // todo.js may still be loading on the first draw; it draws the list again once it is in.
     ...(q || activeTag || typeof todoEntry !== 'function' ? [] : [todoEntry()]),
     ...(favorites.length ? [favCard()] : []),
-    ...(favorites.length && others.length ? [label('노트')] : []),
+    ...(favorites.length && others.length ? [notesLabel()] : []),
     ...others.map(row('note')),
-    ...(vaultHits.length ? [label('금고'), ...vaultHits.map(vaultRow)] : []),
   );
 
   const empty = $('empty');
-  empty.hidden = shown.length + vaultHits.length > 0;
+  empty.hidden = shown.length > 0;
   empty.textContent = q || activeTag ? '찾는 노트가 없어요.' : '아직 노트가 없어요. ＋ 버튼으로 시작하세요.';
   if ($('trash').open) await renderTrash();
   if ($('todo').open) renderTodos();
@@ -985,6 +1094,10 @@ async function flushEditor() {
     return n;
   });
   $('edited').textContent = '저장됨 ' + formatDate(new Date().toISOString());
+  if (raisedId !== id) {
+    raisedId = id;
+    raiseEdited(id);
+  }
   render();
   scheduleSync(3000);
 }
@@ -1061,6 +1174,7 @@ async function showNote(n, fromSearch) {
   await ensureEditor();
   await loadIntoEditor(n, false);
   currentId = n.id; // set last, so a save during loading cannot write the old text into this note
+  raisedId = null;
   editor.getWin().scrollTo(0, 0);
   $('edited').textContent = '수정 ' + formatDate(n.updated);
   closeFind();
@@ -2015,7 +2129,10 @@ if ('serviceWorker' in navigator) {
     if (!hadController || updateSeen) return;
     updateSeen = true;
     // Never reload under someone who is editing or inside the vault.
-    if (!currentId && !$('vault').open && !$('todo').open) location.reload();
+    if (!currentId && !$('vault').open && !$('todo').open) {
+      sessionStorage.setItem(STAY_ON_LIST_KEY, '1');
+      location.reload();
+    }
     else toast('새 버전이 준비됐어요. 앱을 다시 열면 적용돼요.');
   });
   navigator.serviceWorker.register('sw.js');

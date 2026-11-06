@@ -255,9 +255,6 @@ async function openVault() {
       await reloadEntries();
       backToList();
       resetIdleTimer();
-      const pending = vaultEntries.find(e => e.id === pendingEntryId);
-      pendingEntryId = null;
-      if (pending) openForm(pending);
       return;
     }
     lockVault();
@@ -265,13 +262,6 @@ async function openVault() {
   await showLockedPanel();
   // Only here, not after locking: the lock button must not bring the prompt straight back.
   if (!$('vault-unlock').hidden && !$('vault-bio-unlock').hidden) await unlockWithBio();
-}
-
-// From a vault row in the main search: unlock, then go straight to that entry.
-let pendingEntryId = null;
-function openVaultEntry(id) {
-  pendingEntryId = id;
-  openVault();
 }
 
 async function showLockedPanel() {
@@ -331,9 +321,6 @@ async function unlockWithRawKey(raw, keyId) {
   showVaultPanel('vault-list');
   resetIdleTimer();
   await restoreDraft();
-  const pending = vaultEntries.find(e => e.id === pendingEntryId);
-  pendingEntryId = null;
-  if (pending && $('vault-form').hidden) openForm(pending);
 }
 
 async function unlockWithPassphrase(event) {
@@ -395,7 +382,6 @@ async function createVault(event) {
 function lockVault() {
   clearTimeout(idleTimer);
   clearTimeout(graceTimer);
-  pendingEntryId = null;
   const key = vaultKey;
   const unsaved = key && !$('vault-form').hidden && formDirty ? { id: editingId, ...readForm() } : null;
   vaultKey = null;
@@ -450,8 +436,6 @@ async function reloadEntries() {
   vaultEntries = entries;
   vaultPatterns = patterns.sort((a, b) => a.site.localeCompare(b.site, 'ko'));
   vaultBroken = broken;
-  localStorage.setItem(VAULT_INDEX_KEY, JSON.stringify(entries.map(e => ({ id: e.id, site: e.site || '', url: e.url || '' }))));
-  render();
 }
 
 const entryName = e => e.site.trim() || (e.url || '').trim();

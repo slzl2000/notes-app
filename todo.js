@@ -536,3 +536,8 @@ $('todo-import-run').onclick = runTodoImport;
 $('todo-import-cancel').onclick = () => showTodoPanel('todo-main');
 $('todo').addEventListener('focusout', () => setTimeout(() => { if (todoRenderPending && !typingInTodo()) renderTodos(); }, 0));
 render(); // adds the to-do row, in case the list was drawn before this file loaded
+
+// Opening the app starts on the to-do page, over the list; back or ← shows the list. Not after
+// the app reloads itself for an update, which happens only while the list is showing.
+if (sessionStorage.getItem(STAY_ON_LIST_KEY)) sessionStorage.removeItem(STAY_ON_LIST_KEY);
+else openTodo();
