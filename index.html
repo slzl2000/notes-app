@@ -51,6 +51,7 @@
       <button id="note-more" class="icon" type="button" aria-label="옮기기" aria-haspopup="menu" aria-expanded="false"><svg class="glyph" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7V18a1.5 1.5 0 0 0 1.5 1.5h15A1.5 1.5 0 0 0 21 18V9.5A1.5 1.5 0 0 0 19.5 8H12l-2-2.5H4.5A1.5 1.5 0 0 0 3 7z"/><path d="M8.5 13.75h7m-2.75-2.75 2.75 2.75-2.75 2.75"/></svg></button>
       <div id="note-menu" class="menu" role="menu" hidden>
         <button id="move-to-folder" type="button" role="menuitem">폴더로 이동</button>
+        <button id="archive-note" type="button" role="menuitem">보관함으로</button>
         <button id="delete" class="danger" type="button" role="menuitem">휴지통으로 옮기기</button>
       </div>
     </header>
@@ -120,6 +121,7 @@
 <dialog id="folder-edit" aria-label="폴더 편집">
   <h2>폴더 편집</h2>
   <button id="folder-favorite" class="folder-fav" type="button"></button>
+  <button id="folder-archive" class="folder-fav" type="button">보관함으로</button>
   <label>폴더 이름<input id="folder-name" autocomplete="off"></label>
   <p class="muted small">폴더를 삭제해도 안의 노트는 지워지지 않고 바깥으로 나와요.</p>
   <div class="row end">

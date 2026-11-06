@@ -660,6 +660,7 @@ function putOnTop(id) {
 // Once per opening, so typing does not keep rewriting the order.
 let raisedId = null;
 function raiseEdited(id) {
+  if (isArchived(id)) return; // archived notes stay where they are
   const top = topOrderValue();
   const folder = folderOf(id);
   setOrders(folder ? { [id]: top, [folder.id]: top - 1 } : { [id]: top });
@@ -684,6 +685,38 @@ function folderOf(id, items = loadOrder().items) {
   return folder && folder.kind === 'folder' && !folder.deleted ? { id: parent, ...folder } : null;
 }
 
+// ---------- Archive ----------
+// Notes and whole folders kept only for the record. They carry `archived` on their place and are
+// listed in a folded section at the very bottom; a note in an archived folder is archived with it.
+
+let archiveOpen = false; // folded again every time the app starts
+
+function isArchived(id, items = loadOrder().items) {
+  if (items[id] && items[id].archived) return true;
+  const folder = folderOf(id, items);
+  return Boolean(folder && folder.archived);
+}
+
+// Archiving drops the star, and a single note leaves its folder; taking it out puts it on top.
+async function setArchived(id, archived) {
+  const entry = loadOrder().items[id];
+  const isFolder = entry && entry.kind === 'folder';
+  const changes = { [id]: { archived, order: topOrderValue() } };
+  if (isFolder) changes[id].favorite = false;
+  else changes[id].parent = '';
+  editPlaces(changes);
+  if (!isFolder && archived) {
+    const note = await getNote(id);
+    if (note && note.favorite) await toggleFavorite(id, true);
+  }
+  toast(archived ? '보관함으로 옮겼어요.' : '보관함에서 꺼냈어요.');
+  if (id === currentId) {
+    const note = await getNote(id);
+    if (note) showFavorite(note);
+  }
+  await render();
+}
+
 function openFolders() {
   try { return new Set(JSON.parse(localStorage.getItem(OPEN_FOLDERS_KEY)) || []); } catch { return new Set(); }
 }
@@ -699,7 +732,7 @@ function toggleFolderOpen(id) {
 async function moveToFolder(noteId, folderId) {
   const note = await getNote(noteId);
   if (!note) return;
-  editPlaces({ [noteId]: { parent: folderId || '', order: topOrderValue() } });
+  editPlaces({ [noteId]: { parent: folderId || '', archived: false, order: topOrderValue() } });
   if (folderId && note.favorite) {
     await toggleFavorite(noteId, true);
     toast('즐겨찾기를 해제하고 폴더로 옮겼어요.');
@@ -753,6 +786,8 @@ function openFolderEdit(id) {
   const folder = loadOrder().items[id];
   $('folder-name').value = folder.name;
   $('folder-favorite').textContent = folder.favorite ? '★ 즐겨찾기 해제' : '☆ 즐겨찾기에 추가';
+  $('folder-favorite').hidden = Boolean(folder.archived);
+  $('folder-archive').textContent = folder.archived ? '보관 해제' : '보관함으로';
   $('folder-edit').showModal();
 }
 
@@ -769,7 +804,9 @@ function deleteFolder() {
   if (!id) return;
   const items = loadOrder().items;
   const changes = { [id]: { deleted: new Date().toISOString() } };
-  for (const [noteId, entry] of Object.entries(items)) if (entry.parent === id) changes[noteId] = { parent: '' };
+  // Out of an archived folder, the notes stay in the archive.
+  const archived = Boolean(items[id].archived);
+  for (const [noteId, entry] of Object.entries(items)) if (entry.parent === id) changes[noteId] = { parent: '', archived };
   editPlaces(changes);
   $('folder-edit').close();
   toast('폴더를 삭제했어요. 안의 노트는 바깥으로 나왔어요.');
@@ -928,8 +965,11 @@ async function render() {
   const top = shown.filter(n => flat || !inFolder(n));
   const childrenOf = id => shown.filter(n => !flat && places[n.id].parent === id);
   const byPlace = (a, b) => places[a.id].order - places[b.id].order;
-  const favorites = [...top.filter(n => n.favorite && !inFolder(n)), ...folders.filter(f => f.favorite)].sort(byPlace);
-  const others = [...top.filter(n => !n.favorite || inFolder(n)), ...folders.filter(f => !f.favorite)].sort(byPlace);
+  const filed = item => Boolean(places[item.id] && places[item.id].archived);
+  const live = [...top.filter(n => flat || !filed(n)), ...folders.filter(f => !filed(f))];
+  const favorites = live.filter(i => (i.kind === 'folder' || !inFolder(i)) && i.favorite).sort(byPlace);
+  const others = live.filter(i => !favorites.includes(i)).sort(byPlace);
+  const archive = flat ? [] : [...top.filter(filed), ...folders.filter(filed)].sort(byPlace);
   $('order-edit').hidden = shown.length + folders.length < 2 && !orderEditing;
   const editingOrder = orderEditing && !flat; // a filtered list would number only the notes it shows
   const handleFor = li => {
@@ -969,6 +1009,12 @@ async function render() {
     title.textContent = titleOf(n);
     const sub = document.createElement('span');
     const folder = flat && inFolder(n);
+    if (flat && isArchived(n.id, places)) {
+      const mark = document.createElement('em');
+      mark.className = 'archived-mark';
+      mark.textContent = '보관';
+      title.prepend(mark);
+    }
     if (folder) sub.append(`📁 ${folder.name} · `);
     appendSnippet(sub, n, q);
     b.append(title, sub);
@@ -1045,12 +1091,42 @@ async function render() {
     li.append(head, ul);
     return li;
   };
+  // Kept at the very bottom, folded each time the app starts.
+  const archiveCard = () => {
+    const li = document.createElement('li');
+    li.className = 'archive-card';
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'folder-head archive-head';
+    b.setAttribute('aria-expanded', String(archiveOpen));
+    const title = document.createElement('strong');
+    const icon = document.createElement('b');
+    icon.className = 'head-icon';
+    icon.innerHTML = '<svg viewBox="0 0 14 14" aria-hidden="true"><rect x="1.5" y="2" width="11" height="3" rx="0.8"/><path d="M2.5 5v6a1 1 0 0 0 1 1h7a1 1 0 0 0 1-1V5M5.5 7.5h3"/></svg>';
+    const name = document.createElement('b');
+    name.textContent = '보관함';
+    title.append(icon, name);
+    const count = document.createElement('span');
+    const notes = archive.reduce((sum, i) => sum + (i.kind === 'folder' ? childrenOf(i.id).length : 1), 0);
+    count.textContent = `노트 ${notes}개`;
+    b.append(title, count);
+    b.onclick = () => { archiveOpen = !archiveOpen; render(); };
+    li.append(b);
+    if (archiveOpen) {
+      const ul = document.createElement('ul');
+      ul.className = 'archive-list';
+      ul.append(...archive.map(row('archive')));
+      li.append(ul);
+    }
+    return li;
+  };
   $('list').replaceChildren(
     // todo.js may still be loading on the first draw; it draws the list again once it is in.
     ...(q || activeTag || typeof todoEntry !== 'function' ? [] : [todoEntry()]),
     ...(favorites.length ? [favCard()] : []),
     ...(favorites.length && others.length ? [notesLabel()] : []),
     ...others.map(row('note')),
+    ...(archive.length ? [archiveCard()] : []),
   );
 
   const empty = $('empty');
@@ -1128,7 +1204,8 @@ async function loadIntoEditor(n, keepPlace) {
 
 function showFavorite(n) {
   const star = $('favorite');
-  star.hidden = Boolean(folderOf(n.id)); // a note in a folder cannot be a favourite
+  // A note in a folder, or in the archive, cannot be a favourite.
+  star.hidden = Boolean(folderOf(n.id)) || isArchived(n.id);
   star.textContent = n.favorite ? '★' : '☆';
   star.classList.toggle('on', Boolean(n.favorite));
   star.setAttribute('aria-pressed', String(Boolean(n.favorite)));
@@ -2034,8 +2111,18 @@ $('folder-favorite').onclick = () => {
   toggleFolderFavorite(editingFolderId);
 };
 $('folder-edit-close').onclick = () => $('folder-edit').close();
+$('folder-archive').onclick = () => {
+  $('folder-edit').close();
+  const id = editingFolderId;
+  setArchived(id, !loadOrder().items[id].archived);
+};
+$('archive-note').onclick = () => {
+  toggleNoteMenu(false);
+  if (currentId) setArchived(currentId, !isArchived(currentId));
+};
 // Moving a note to the trash sits in a menu, away from where the thumb rests.
 function toggleNoteMenu(open) {
+  if (open && currentId) $('archive-note').textContent = isArchived(currentId) ? '보관 해제' : '보관함으로';
   $('note-menu').hidden = !open;
   $('note-more').setAttribute('aria-expanded', String(open));
 }
