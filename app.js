@@ -1187,8 +1187,18 @@ async function showNote(n, fromSearch) {
 // they cover the list, again as a note does there.
 const wideScreen = () => matchMedia('(min-width: 721px)').matches;
 function showPage(dialog) {
-  if (wideScreen()) dialog.show();
-  else dialog.showModal();
+  if (wideScreen()) {
+    dialog.show();
+    return;
+  }
+  dialog.showModal();
+  // showModal puts focus on the first button, usually ←, which then wears a focus ring; the page
+  // itself takes focus instead. Fields a page focuses on purpose do so after this.
+  const active = document.activeElement;
+  if (active && active.tagName === 'BUTTON' && dialog.contains(active)) {
+    dialog.tabIndex = -1;
+    dialog.focus({ preventScroll: true });
+  }
 }
 
 // Opening a note or another page from the list replaces the page that is open and takes over its

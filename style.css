@@ -456,7 +456,7 @@ dialog .todo-add select { flex: none; width: auto; margin: 0; padding: 8px 6px; 
 #todo-today .todo-mark { background: var(--urgent); }
 #todo-long .todo-mark { background: var(--muted); }
 #todo-long .todo-text strong { color: var(--muted); }
-#todo-main:focus { outline: 0; }
+#todo-main:focus, dialog:focus { outline: 0; }
 .todo-close { margin-bottom: 12px; }
 .todo-handle {
   display: grid;

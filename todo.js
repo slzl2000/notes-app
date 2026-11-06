@@ -140,13 +140,15 @@ function renderTodos() {
   const page = $('todo');
   const top = page.scrollTop;
   const focused = document.activeElement && document.activeElement.closest ? document.activeElement.closest('[data-todo]') : null;
+  // Focus outside the page, such as in the list's search box on a wide screen, is left alone.
+  const wasInside = page.contains(document.activeElement);
   drawTodos();
   const again = focused && page.querySelector(`[data-todo="${focused.dataset.todo}"] .todo-text`);
   if (again && again.getClientRects().length) again.focus({ preventScroll: true });
   // Focus left on a removed row, or on a finished item now in the folded '완료' list, is lost;
   // the page itself takes it, so the browser does not hand it to the top of the screen.
   const active = document.activeElement;
-  if (!page.contains(active) || !active.getClientRects().length) $('todo-main').focus({ preventScroll: true });
+  if (wasInside && (!page.contains(active) || !active.getClientRects().length)) $('todo-main').focus({ preventScroll: true });
   page.scrollTop = top;
   requestAnimationFrame(() => { page.scrollTop = top; });
 }
