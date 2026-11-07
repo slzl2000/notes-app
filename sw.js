@@ -1,10 +1,10 @@
 'use strict';
 
 // Bump the version only when you want to change the app; otherwise it never updates itself.
-const CACHE = 'notes-v45';
+const CACHE = 'notes-v46';
 const T = 'vendor/tinymce/';
 const FILES = [
-  './', 'index.html', 'style.css', 'app.js', 'vault.js', 'todo.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png',
+  './', 'index.html', 'style.css', 'app.js', 'vault.js', 'todo.js', 'manifest.webmanifest', 'icon-v2-192.png', 'icon-v2-512.png',
   T + 'tinymce.min.js', T + 'themes/silver/theme.min.js', T + 'models/dom/model.min.js', T + 'icons/default/icons.min.js',
   T + 'plugins/lists/plugin.min.js', T + 'plugins/table/plugin.min.js', T + 'plugins/link/plugin.min.js', T + 'plugins/autolink/plugin.min.js',
   T + 'skins/ui/oxide/skin.min.css', T + 'skins/ui/oxide/content.min.css', T + 'skins/ui/oxide-dark/skin.min.css', T + 'skins/ui/oxide-dark/content.min.css',
