@@ -233,7 +233,7 @@ function ensureEditor() {
       skin: darkMode() ? 'oxide-dark' : 'oxide',
       content_css: darkMode() ? 'dark' : 'default',
       toolbar_mode: 'scrolling',
-      toolbar: 'undo redo | blocks | bold italic underline strikethrough | forecolor backcolor | bullist numlist notecheck | table noteimage link | removeformat',
+      toolbar: 'undo redo | blocks | bold italic underline strikethrough | forecolor backcolor | bullist numlist notecheck copybox | table noteimage link | removeformat',
       table_toolbar: 'tableprops tabledelete | tableinsertrowbefore tableinsertrowafter tabledeleterow | tableinsertcolbefore tableinsertcolafter tabledeletecol | tablemergecells tablesplitcells | tablecellbackgroundcolor',
       // Dragging a column border widens that column and the table, instead of taking room from a
       // neighbour that may have none to give.
@@ -263,6 +263,11 @@ function ensureEditor() {
         .yt-card img, .yt-card iframe { display: block; width: 100%; height: 100%; border: 0; object-fit: cover; }
         .yt-card::after { content: ''; position: absolute; top: 50%; left: 50%; width: 64px; height: 44px; background: rgb(0 0 0 / 70%) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M9 7l8 5-8 5z' fill='white'/%3E%3C/svg%3E") center / 28px no-repeat; border-radius: 12px; transform: translate(-50%, -50%); }
         .yt-card.playing::after { display: none; }
+        .copy-box { position: relative; margin: 10px 0; padding: 8px 76px 8px 12px; border: 1px solid rgb(128 128 128 / 35%); border-radius: 8px; background: rgb(128 128 128 / 8%); }
+        .copy-box > :first-child { margin-top: 0; }
+        .copy-box > :last-child { margin-bottom: 0; }
+        .copy-box::after { content: '복사'; position: absolute; top: 6px; right: 6px; padding: 3px 12px; border-radius: 6px; background: #c8672b; color: #fff; font-size: 13px; font-weight: 600; line-height: 1.5; cursor: pointer; user-select: none; -webkit-user-select: none; }
+        .copy-box[data-mce-copied]::after { content: '복사됨'; background: #5f8f4e; }
         ::highlight(note-hit) { background: #ffe08a; color: #24221e; }
         ::highlight(note-current) { background: #f39a2d; color: #000; }${darkMode() ? DARK_CONTENT_STYLE : ''}`,
       paste_preprocess: (_, args) => { args.content = stylePastedTable(args.content); },
@@ -271,6 +276,16 @@ function ensureEditor() {
           text: '☑',
           tooltip: '체크박스',
           onAction: () => ed.insertContent('<input type="checkbox">&nbsp;'),
+        });
+        ed.ui.registry.addToggleButton('copybox', {
+          text: '복사 상자',
+          tooltip: '선택한 문단을 복사 상자로 묶기 · 다시 누르면 풀기',
+          onAction: () => toggleCopyBox(ed),
+          onSetup: api => {
+            const update = () => api.setActive(Boolean(ed.dom.getParent(ed.selection.getNode(), '.copy-box')));
+            ed.on('NodeChange', update);
+            return () => ed.off('NodeChange', update);
+          },
         });
         ed.ui.registry.addButton('noteimage', {
           icon: 'image',
@@ -286,6 +301,7 @@ function ensureEditor() {
           ed.on('input Undo Redo ExecCommand', onEdit);
           ed.on('PastePostProcess SetContent', () => { if (!loading) processImages(); });
           ed.on('PastePostProcess', e => linkifyText(e.node));
+          watchCopyBoxes(ed.getBody());
           ed.on('click', e => {
             const card = e.target.closest && e.target.closest('.yt-card');
             if (card) { playVideo(card); return; }
@@ -301,6 +317,139 @@ function ensureEditor() {
     });
   });
   return editorReady;
+}
+
+// ---------- Copy boxes ----------
+// The 복사 label is drawn by CSS in the box's top-right corner, so nothing extra is saved with the
+// note. A tap there copies the box as plain text and keeps the caret and keyboard away.
+
+// Wraps the top-level blocks the selection touches (whole lists and tables included) in one box,
+// taking in any boxes among them; with the caret inside a box, unwraps that box instead.
+function toggleCopyBox(ed) {
+  const body = ed.getBody();
+  const top = n => { while (n && n.parentNode !== body) n = n.parentNode; return n; };
+  const rng = ed.selection.getRng();
+  const first = top(rng.startContainer);
+  const last = top(rng.endContainer);
+  if (!first || !last) return;
+  ed.undoManager.transact(() => {
+    if (first === last && first.classList && first.classList.contains('copy-box')) {
+      while (first.firstChild) body.insertBefore(first.firstChild, first);
+      first.remove();
+      return;
+    }
+    const box = ed.dom.create('div', { class: 'copy-box' });
+    body.insertBefore(box, first);
+    for (let n = first; n;) {
+      const next = n.nextSibling;
+      if (n.classList && n.classList.contains('copy-box')) {
+        while (n.firstChild) box.append(n.firstChild);
+        n.remove();
+      } else {
+        box.append(n);
+      }
+      if (n === last) break;
+      n = next;
+    }
+    ed.selection.select(box, true);
+    ed.selection.collapse(false);
+  });
+  ed.nodeChanged();
+  onEdit();
+}
+
+function copyLabelAt(body, x, y) {
+  const el = body.ownerDocument.elementFromPoint(x, y);
+  const box = el && el.closest && el.closest('.copy-box');
+  if (!box) return null;
+  const r = box.getBoundingClientRect();
+  return x >= r.right - 70 && y <= r.top + 36 ? box : null;
+}
+
+// One line per paragraph or line break, as it reads on screen; lists keep their markers.
+function copyBoxText(box) {
+  const BLOCK = /^(P|DIV|LI|H[1-6]|BLOCKQUOTE|PRE|TR|UL|OL|TABLE|TBODY|THEAD)$/;
+  const lines = [];
+  let line = '';
+  const flush = () => { if (line !== '') { lines.push(line); line = ''; } };
+  const walk = node => {
+    let hasBlock = false;
+    let n = 0;
+    for (const c of node.childNodes) {
+      if (c.nodeType === 3) { line += c.data; continue; }
+      if (c.nodeType !== 1) continue;
+      if (c.nodeName === 'BR') {
+        if (c.nextSibling || !BLOCK.test(node.nodeName)) { lines.push(line); line = ''; }
+        continue;
+      }
+      if (c.nodeName === 'INPUT') { line += c.hasAttribute('checked') ? '☑ ' : '☐ '; continue; }
+      if (c.nodeName === 'TD' || c.nodeName === 'TH') { if (c.previousElementSibling) line += '\t'; walk(c); continue; }
+      if (!BLOCK.test(c.nodeName)) { walk(c); continue; }
+      hasBlock = true;
+      flush();
+      if (c.nodeName === 'LI') line += node.nodeName === 'OL' ? `${++n}. ` : '- ';
+      const inner = walk(c);
+      if (line !== '' || !inner) { lines.push(line); line = ''; }
+    }
+    return hasBlock;
+  };
+  walk(box);
+  flush();
+  return lines.map(l => l.replace(/ /g, ' ').replace(/\s+$/, '')).join('\n').replace(/^\n+|\n+$/g, '');
+}
+
+async function copyPlainText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    const area = document.createElement('textarea');
+    area.value = text;
+    area.setAttribute('readonly', '');
+    area.style.cssText = 'position:fixed;top:0;left:0;opacity:0';
+    document.body.append(area);
+    area.select();
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch { /* not allowed */ }
+    area.remove();
+    return ok;
+  }
+}
+
+async function copyBox(box) {
+  if (await copyPlainText(copyBoxText(box))) {
+    toast('복사했어요.');
+    // Shown for a moment; the editor never saves data-mce-* attributes.
+    box.setAttribute('data-mce-copied', '1');
+    setTimeout(() => box.removeAttribute('data-mce-copied'), 1200);
+  } else {
+    toast('복사하지 못했어요. 글을 길게 눌러 직접 복사하세요.');
+  }
+}
+
+function watchCopyBoxes(body) {
+  // Mouse: the press itself copies, and stops the caret landing there.
+  body.addEventListener('mousedown', e => {
+    if (e.button !== 0) return;
+    const box = copyLabelAt(body, e.clientX, e.clientY);
+    if (!box) return;
+    e.preventDefault();
+    copyBox(box);
+  });
+  // Touch: a tap that did not scroll copies; cancelling its end keeps the keyboard closed.
+  let start = null;
+  body.addEventListener('touchstart', e => {
+    const t = e.touches[0];
+    start = e.touches.length === 1 ? { x: t.clientX, y: t.clientY } : null;
+  }, { passive: true });
+  body.addEventListener('touchend', e => {
+    const t = e.changedTouches[0];
+    if (!start || Math.hypot(t.clientX - start.x, t.clientY - start.y) > 10) return;
+    const box = copyLabelAt(body, t.clientX, t.clientY);
+    if (!box) return;
+    e.preventDefault();
+    copyBox(box);
+  });
 }
 
 // Web addresses written as plain text; stops before Korean text written straight after one.
