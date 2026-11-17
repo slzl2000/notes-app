@@ -1,4 +1,6 @@
 'use strict';
+// Must match CACHE in sw.js, which refuses to store a copy of this file without it.
+const BUILD = 'notes-v49';
 
 const $ = id => document.getElementById(id);
 const CFG_KEY = 'notes.config';
@@ -1507,6 +1509,7 @@ async function loadIntoEditor(n, keepPlace) {
   decorateVideos();
   if (place) { try { editor.selection.moveToBookmark(place); } catch { /* the text moved away */ } }
   editor.undoManager.clear();
+  editor.undoManager.add(); // the starting point, so the first change can be undone too
   loading = false;
   // The editor tidies HTML when loading; compare later edits against its own version.
   savedValue = toStoredHtml(editor.getContent());
@@ -2351,7 +2354,12 @@ function openSettings() {
   $('cfg-token').value = cfg ? cfg.token : '';
   $('cfg-msg').textContent = '';
   $('io-msg').textContent = '';
-  if (window.caches) caches.keys().then(keys => { $('app-version').textContent = `앱 버전: ${keys.join(', ')}`; }).catch(() => {});
+  // The running code's own version first; the stored copy follows only when it differs.
+  $('app-version').textContent = `앱 버전: ${BUILD}`;
+  if (window.caches) caches.keys().then(keys => {
+    const stored = keys.filter(k => k !== BUILD);
+    if (stored.length) $('app-version').textContent = `앱 버전: ${BUILD} (받아 둔 새 버전: ${stored.join(', ')} · 앱을 완전히 닫았다 열면 적용)`;
+  }).catch(() => {});
   $('settings').showModal();
 }
 

@@ -1,7 +1,7 @@
 'use strict';
 
 // Bump the version only when you want to change the app; otherwise it never updates itself.
-const CACHE = 'notes-v48';
+const CACHE = 'notes-v49';
 const T = 'vendor/tinymce/';
 const FILES = [
   './', 'index.html', 'style.css', 'app.js', 'vault.js', 'todo.js', 'manifest.webmanifest', 'icon-v2-192.png', 'icon-v2-512.png',
@@ -11,10 +11,25 @@ const FILES = [
   T + 'skins/content/default/content.min.css', T + 'skins/content/dark/content.min.css', T + 'langs/ko_KR.js',
 ];
 
+const STAMPED = ['index.html', 'style.css', 'app.js', 'vault.js', 'todo.js'];
+
 self.addEventListener('install', event => {
   // Skip the browser and CDN caches, or a new version can be stored with last version's files.
   const fresh = FILES.map(file => new Request(`${file}?v=${CACHE}`, { cache: 'reload' }));
-  event.waitUntil(caches.open(CACHE).then(c => c.addAll(fresh)).then(() => self.skipWaiting()));
+  event.waitUntil((async () => {
+    const cache = await caches.open(CACHE);
+    await cache.addAll(fresh);
+    // Right after a release the server can still hand out the old files. Each of these carries
+    // its version; if any does not match, nothing is kept and the browser tries again later.
+    for (const file of STAMPED) {
+      const hit = await cache.match(`${file}?v=${CACHE}`);
+      if (!hit || !(await hit.text()).includes(CACHE)) {
+        await caches.delete(CACHE);
+        throw new Error(`${file} is not ${CACHE} yet`);
+      }
+    }
+    await self.skipWaiting();
+  })());
 });
 
 self.addEventListener('activate', event => {
