@@ -259,6 +259,8 @@ function ensureEditor() {
         table { max-width: none; font-size: 14px; }
         td, th { padding: 4px 6px; word-break: keep-all; }
         input[type=checkbox] { width: 16px; height: 16px; margin-right: 4px; vertical-align: -2px; }
+        /* A line that starts with a ticked box is done: struck through and faded. */
+        :is(p, li, div, h1, h2, h3, h4, h5, h6):has(> input[type=checkbox]:first-child[checked]) { text-decoration: line-through; opacity: 0.55; }
         .yt-card { display: block; position: relative; width: 100%; max-width: 480px; aspect-ratio: 16 / 9; margin: 6px 0 10px; overflow: hidden; background: #000; border-radius: 10px; cursor: pointer; }
         .yt-card img, .yt-card iframe { display: block; width: 100%; height: 100%; border: 0; object-fit: cover; }
         .yt-card::after { content: ''; position: absolute; top: 50%; left: 50%; width: 64px; height: 44px; background: rgb(0 0 0 / 70%) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M9 7l8 5-8 5z' fill='white'/%3E%3C/svg%3E") center / 28px no-repeat; border-radius: 12px; transform: translate(-50%, -50%); }
@@ -275,7 +277,7 @@ function ensureEditor() {
         ed.ui.registry.addButton('notecheck', {
           text: '☑',
           tooltip: '체크박스',
-          onAction: () => ed.insertContent('<input type="checkbox">&nbsp;'),
+          onAction: () => toggleChecklist(ed),
         });
         ed.ui.registry.addToggleButton('copybox', {
           text: '복사 상자',
@@ -298,6 +300,8 @@ function ensureEditor() {
           ed.getBody().addEventListener('paste', e => {
             lastClipboardHtml = e.clipboardData ? e.clipboardData.getData('text/html') : '';
           }, true);
+          // Runs before the editor's own paste handling, and takes over only for checklist pastes.
+          ed.getBody().addEventListener('paste', e => pasteChecklist(ed, e), true);
           ed.on('input Undo Redo ExecCommand', onEdit);
           ed.on('PastePostProcess SetContent', () => { if (!loading) processImages(); });
           ed.on('PastePostProcess', e => linkifyText(e.node));
@@ -317,6 +321,167 @@ function ensureEditor() {
     });
   });
   return editorReady;
+}
+
+// ---------- Checklists ----------
+// A checklist line is a paragraph (or list item) that starts with a checkbox; ticking it sets the
+// box's `checked` attribute, which is saved with the note. Lines inside one paragraph that are
+// separated by line breaks are split into paragraphs of their own first.
+
+const isCheckbox = n => Boolean(n && n.nodeName === 'INPUT' && n.getAttribute('type') === 'checkbox');
+const isBookmark = n => n.nodeType === 1 && n.getAttribute('data-mce-type') === 'bookmark';
+
+// The checkbox a line starts with, skipping blank text and the editor's selection markers.
+function leadingCheckbox(block) {
+  for (const c of block.childNodes) {
+    if (c.nodeType === 3 && !c.data.trim()) continue;
+    if (isBookmark(c)) continue;
+    return isCheckbox(c) ? c : null;
+  }
+  return null;
+}
+
+const lineHasText = block => block.textContent.trim() !== '' || Boolean(block.querySelector('img'));
+
+// Splits a paragraph at its line breaks into one paragraph per line; returns the lines in order.
+function splitLines(ed, block) {
+  if (!/^(P|DIV|H[1-6])$/.test(block.nodeName) || block.classList.contains('copy-box')) return [block];
+  const breaks = [...block.childNodes].filter(c => c.nodeName === 'BR' && c.nextSibling && !c.hasAttribute('data-mce-bogus'));
+  if (!breaks.length) return [block];
+  const lines = [block];
+  let current = block;
+  for (const br of breaks) {
+    const next = block.cloneNode(false);
+    next.removeAttribute('id');
+    while (br.nextSibling && !breaks.includes(br.nextSibling)) next.append(br.nextSibling);
+    br.remove();
+    current.after(next);
+    current = next;
+    lines.push(next);
+  }
+  for (const line of lines) if (!line.firstChild) line.append(ed.dom.create('br', { 'data-mce-bogus': '1' }));
+  return lines;
+}
+
+function addCheckbox(ed, block, checked) {
+  const box = ed.dom.create('input', checked ? { type: 'checkbox', checked: 'checked' } : { type: 'checkbox' });
+  const first = block.firstChild;
+  if (first && first.nodeName === 'BR') first.remove(); // an empty line's placeholder
+  block.prepend(box, ' ');
+  return box;
+}
+
+function removeCheckbox(box) {
+  let next = box.nextSibling;
+  while (next && (isBookmark(next) || (next.nodeType === 3 && next.data === ''))) next = next.nextSibling;
+  if (next && next.nodeType === 3) {
+    next.data = next.data.replace(/^[  ]/, '');
+    if (next.data === '') next.remove();
+  }
+  box.remove();
+}
+
+// ☑ button: the selected lines (or the caret's line) become checklist lines; if they all are
+// already, they go back to plain text. Blank lines are left alone. One step to undo.
+function toggleChecklist(ed) {
+  ed.undoManager.transact(() => {
+    const collapsed = ed.selection.isCollapsed();
+    const bookmark = ed.selection.getBookmark();
+    const start = ed.dom.get(`${bookmark.id}_start`);
+    const end = ed.dom.get(`${bookmark.id}_end`) || start;
+    const blocks = ed.selection.getSelectedBlocks();
+    const fromStart = (line, marker) => {
+      const r = line.ownerDocument.createRange();
+      r.setStart(line, 0);
+      r.setEndBefore(marker);
+      return r.toString().trim() === '';
+    };
+    const lines = blocks.flatMap(b => splitLines(ed, b)).filter(line => {
+      if (start && !line.contains(start) && line.compareDocumentPosition(start) & Node.DOCUMENT_POSITION_FOLLOWING) return false;
+      if (end && !line.contains(end) && line.compareDocumentPosition(end) & Node.DOCUMENT_POSITION_PRECEDING) return false;
+      // A selection that ends at the very start of a line does not take that line in.
+      if (!collapsed && end && line.contains(end) && !line.contains(start) && fromStart(line, end)) return false;
+      return true;
+    });
+    const used = lines.filter(l => lineHasText(l) || leadingCheckbox(l));
+    if (used.length && used.every(leadingCheckbox)) {
+      for (const line of used) removeCheckbox(leadingCheckbox(line));
+    } else if (used.length) {
+      for (const line of used) if (!leadingCheckbox(line)) addCheckbox(ed, line, false);
+    } else if (lines.length) {
+      addCheckbox(ed, lines[0], false); // an empty line: start a checklist there
+    }
+    ed.selection.moveToBookmark(bookmark);
+  });
+  ed.nodeChanged();
+  onEdit();
+}
+
+// ☐ ☑ - [ ] - [x] at the start of a pasted line; ☑ and [x] mean ticked.
+const CHECK_MARK = /^\s*(?:☐|☑|✅|✔|-\s*\[\s?\]|-\s*\[[xX]\])\s*/;
+const parseCheckLine = text => {
+  const m = text.match(CHECK_MARK);
+  return { text: m ? text.slice(m[0].length) : text, marked: Boolean(m), checked: Boolean(m && /☑|✅|✔|\[[xX]\]/.test(m[0])) };
+};
+
+// Pasting several lines into a checklist line, or lines written with checkbox marks, gives each
+// line its own checkbox. Any other paste is left to the editor.
+function pasteChecklist(ed, e) {
+  const text = e.clipboardData ? e.clipboardData.getData('text/plain') : '';
+  if (!text) return;
+  const lines = text.replace(/\r\n?/g, '\n').replace(/\n+$/, '').split('\n');
+  const node = ed.selection.getNode();
+  if (ed.dom.getParent(node, 'td,th')) return;
+  const block = ed.dom.getParent(node, ed.dom.isBlock);
+  if (!block || block === ed.getBody()) return;
+  const inChecklist = Boolean(leadingCheckbox(block));
+  const marked = lines.some(l => CHECK_MARK.test(l));
+  if (!marked && !(inChecklist && lines.length > 1)) return;
+  e.preventDefault();
+  e.stopImmediatePropagation();
+
+  ed.undoManager.transact(() => {
+    if (!ed.selection.isCollapsed()) ed.execCommand('Delete');
+    const rng = ed.selection.getRng();
+    const here = ed.dom.getParent(rng.startContainer, ed.dom.isBlock) || block;
+    // What follows the caret moves to the end of the last pasted line.
+    const tailRange = rng.cloneRange();
+    tailRange.setEndAfter(here.lastChild || here);
+    const tail = tailRange.extractContents();
+    let last = null;
+    let prev = here;
+    lines.forEach((raw, i) => {
+      const line = parseCheckLine(raw);
+      if (i === 0) {
+        const empty = !lineHasText(here);
+        let box = leadingCheckbox(here);
+        if (!box && line.marked && empty) box = addCheckbox(ed, here, false);
+        if (box && line.checked && empty) box.setAttribute('checked', 'checked');
+        if (here.lastChild && here.lastChild.nodeName === 'BR') here.lastChild.remove();
+        last = ed.getDoc().createTextNode(line.text);
+        here.append(last);
+        return;
+      }
+      const next = ed.dom.create(here.nodeName === 'LI' ? 'li' : 'p');
+      if (line.text.trim()) {
+        last = ed.getDoc().createTextNode(line.text);
+        next.append(last);
+        if (line.marked || inChecklist) addCheckbox(ed, next, line.checked);
+      } else {
+        next.append(ed.dom.create('br', { 'data-mce-bogus': '1' }));
+        last = null;
+      }
+      ed.dom.insertAfter(next, prev);
+      prev = next;
+    });
+    const bogus = prev.lastChild && prev.lastChild.nodeName === 'BR' && tail.textContent ? prev.lastChild : null;
+    if (bogus) bogus.remove();
+    prev.append(tail);
+    if (last) ed.selection.setCursorLocation(last, last.length);
+    else ed.selection.setCursorLocation(prev, 0);
+  });
+  ed.nodeChanged();
+  onEdit();
 }
 
 // ---------- Copy boxes ----------
