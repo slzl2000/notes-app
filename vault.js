@@ -1,5 +1,5 @@
 'use strict';
-// build notes-v49 (checked by sw.js)
+// build notes-v50 (checked by sw.js)
 
 // The vault keeps each entry in its own AES-GCM encrypted file under vault/ in the repository.
 // A random vault key encrypts the entries; the passphrase (and optionally a fingerprint) only

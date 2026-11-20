@@ -1,4 +1,4 @@
-/* build notes-v49 (checked by sw.js) */
+/* build notes-v50 (checked by sw.js) */
 :root {
   color-scheme: light dark;
   --bg: #f7f5f0;
@@ -56,6 +56,8 @@ button {
   cursor: pointer;
 }
 button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* A caret in the accent colour stays visible on the dark theme too. */
+input, textarea { caret-color: var(--accent); }
 .icon { width: 40px; min-height: 40px; padding: 0; border: 0; font-size: 18px; }
 /* Drawn icons: a typed ⌕ or ⋯ comes out small and sits differently on each phone. */
 .glyph { display: block; width: 22px; height: 22px; margin: auto; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }

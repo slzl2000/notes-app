@@ -1,6 +1,6 @@
 'use strict';
 // Must match CACHE in sw.js, which refuses to store a copy of this file without it.
-const BUILD = 'notes-v49';
+const BUILD = 'notes-v50';
 
 const $ = id => document.getElementById(id);
 const CFG_KEY = 'notes.config';
@@ -211,6 +211,8 @@ const DARK_TEXT_COLORS = ['#000', '#000000', 'black', 'rgb(0, 0, 0)', 'rgb(0,0,0
 const DARK_CONTENT_STYLE = `
         html { color-scheme: dark; }
         html, body { background: #1b1a18; color: #ece9e2; }
+        /* The thin default caret disappears on the dark page; a bright one stands out. */
+        body, body * { caret-color: #ffb45e; }
         /* The dark skin paints links and the box around a link being edited the same blue. */
         a { color: #7db8ff; }
         .mce-content-body [data-mce-selected=inline-boundary] { background: #3a3226; }
@@ -235,7 +237,7 @@ function ensureEditor() {
       skin: darkMode() ? 'oxide-dark' : 'oxide',
       content_css: darkMode() ? 'dark' : 'default',
       toolbar_mode: 'scrolling',
-      toolbar: 'undo redo | blocks | bold italic underline strikethrough | forecolor backcolor | bullist numlist notecheck copybox | table noteimage link | removeformat',
+      toolbar: 'undo redo | blocks | bold italic underline strikethrough | forecolor backcolor notealign | bullist numlist notecheck copybox | table noteimage link | removeformat',
       table_toolbar: 'tableprops tabledelete | tableinsertrowbefore tableinsertrowafter tabledeleterow | tableinsertcolbefore tableinsertcolafter tabledeletecol | tablemergecells tablesplitcells | tablecellbackgroundcolor',
       // Dragging a column border widens that column and the table, instead of taking room from a
       // neighbour that may have none to give.
@@ -280,6 +282,28 @@ function ensureEditor() {
           text: '☑',
           tooltip: '체크박스',
           onAction: () => toggleChecklist(ed),
+        });
+        // One button for alignment, so the toolbar stays short on a phone; its icon shows the
+        // alignment of the line with the caret.
+        const ALIGNS = [['JustifyLeft', 'align-left', '왼쪽 정렬', 'alignleft'], ['JustifyCenter', 'align-center', '가운데 정렬', 'aligncenter'], ['JustifyRight', 'align-right', '오른쪽 정렬', 'alignright']];
+        ed.ui.registry.addMenuButton('notealign', {
+          icon: 'align-left',
+          tooltip: '정렬',
+          fetch: done => done(ALIGNS.map(([cmd, icon, text, format]) => ({
+            type: 'togglemenuitem',
+            icon,
+            text,
+            active: ed.formatter.match(format),
+            onAction: () => ed.execCommand(cmd),
+          }))),
+          onSetup: api => {
+            const update = () => {
+              const hit = ALIGNS.find(([, , , format]) => format !== 'alignleft' && ed.formatter.match(format));
+              api.setIcon(hit ? hit[1] : 'align-left');
+            };
+            ed.on('NodeChange', update);
+            return () => ed.off('NodeChange', update);
+          },
         });
         ed.ui.registry.addToggleButton('copybox', {
           text: '복사 상자',
