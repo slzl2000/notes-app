@@ -1,6 +1,6 @@
 'use strict';
 // Must match CACHE in sw.js, which refuses to store a copy of this file without it.
-const BUILD = 'notes-v50';
+const BUILD = 'notes-v51';
 
 const $ = id => document.getElementById(id);
 const CFG_KEY = 'notes.config';
@@ -211,8 +211,9 @@ const DARK_TEXT_COLORS = ['#000', '#000000', 'black', 'rgb(0, 0, 0)', 'rgb(0,0,0
 const DARK_CONTENT_STYLE = `
         html { color-scheme: dark; }
         html, body { background: #1b1a18; color: #ece9e2; }
-        /* The thin default caret disappears on the dark page; a bright one stands out. */
-        body, body * { caret-color: #ffb45e; }
+        /* The thin default caret disappears on the dark page; a bright one stands out. Text
+           pasted from web pages can carry its own caret colour, so this one always wins. */
+        body, body * { caret-color: #ffb45e !important; }
         /* The dark skin paints links and the box around a link being edited the same blue. */
         a { color: #7db8ff; }
         .mce-content-body [data-mce-selected=inline-boundary] { background: #3a3226; }
