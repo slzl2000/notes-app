@@ -1,4 +1,4 @@
-/* build notes-v51 (checked by sw.js) */
+/* build notes-v52 (checked by sw.js) */
 :root {
   color-scheme: light dark;
   --bg: #f7f5f0;
@@ -194,17 +194,6 @@ body.list-dragging, body.list-dragging * { cursor: grabbing; user-select: none; 
   border-radius: 8px;
   font-size: 16px;
 }
-.tags { display: flex; gap: 6px; padding: 0 12px; overflow-x: auto; }
-.tags:not(:empty) { padding-bottom: 8px; }
-.tags button {
-  flex: none;
-  min-height: 28px;
-  padding: 0 10px;
-  border-radius: 14px;
-  color: var(--muted);
-  font-size: 13px;
-}
-.tags button.on { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
 #list { flex: 1; margin: 0; padding: 0 0 88px; overflow-y: auto; list-style: none; }
 #list:empty { flex: 0; padding: 0; }
 #list button {

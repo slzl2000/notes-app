@@ -1,6 +1,6 @@
 'use strict';
 // Must match CACHE in sw.js, which refuses to store a copy of this file without it.
-const BUILD = 'notes-v51';
+const BUILD = 'notes-v52';
 
 const $ = id => document.getElementById(id);
 const CFG_KEY = 'notes.config';
@@ -67,10 +67,6 @@ function makeNote(body, created, updated, title = '', favorite = false) {
 
 const hasContent = n => Boolean((n.title || '').trim() || n.text.trim()) || /<img\b/i.test(n.body);
 const titleOf = n => (n.title || '').trim() || (n.text.split('\n').find(l => l.trim()) || '').trim() || (/<img\b/i.test(n.body) ? '이미지 노트' : '빈 노트');
-
-function tagsOf(text) {
-  return [...new Set([...text.matchAll(/(?:^|\s)#([\p{L}\p{N}_-]+)/gu)].map(m => m[1]))];
-}
 
 function formatDate(iso) {
   const d = new Date(iso);
@@ -333,6 +329,7 @@ function ensureEditor() {
           ed.on('PastePostProcess SetContent', () => { if (!loading) processImages(); });
           ed.on('PastePostProcess', e => linkifyText(e.node));
           watchCopyBoxes(ed.getBody());
+          watchPhoneLinks(ed);
           ed.on('click', e => {
             const card = e.target.closest && e.target.closest('.yt-card');
             if (card) { playVideo(card); return; }
@@ -655,17 +652,79 @@ function findUrls(text) {
   return found;
 }
 
-// Turns typed or pasted addresses into links; the autolink plugin only catches them as they are typed.
+// Korean phone numbers: mobile, Seoul and area codes, 070 and 050x, and 15xx/16xx/18xx-xxxx.
+// Digits may be joined by - or . (or not at all for numbers starting with 0); a number inside a
+// longer run of digits, such as an order number, is not one.
+const PHONE = /(?<![\w-])(?:01[016789][-.]?\d{3,4}[-.]?\d{4}|02[-.]?\d{3,4}[-.]?\d{4}|0[3-6][1-5][-.]?\d{3,4}[-.]?\d{4}|0(?:70|50\d)[-.]?\d{3,4}[-.]?\d{4}|1[568]\d{2}-\d{4})(?![\d-])/g;
+
+function findPhones(text) {
+  return [...text.matchAll(PHONE)].map(m => ({ start: m.index, end: m.index + m[0].length, text: m[0], href: `tel:${m[0].replace(/\D/g, '')}` }));
+}
+
+// Addresses and phone numbers in one text, in order; a number inside an address stays part of it.
+function findLinks(text) {
+  const urls = /https?:\/\/|www\./i.test(text) ? findUrls(text) : [];
+  const phones = findPhones(text).filter(p => !urls.some(u => p.start < u.end && p.end > u.start));
+  return [...urls, ...phones].sort((a, b) => a.start - b.start);
+}
+
+// A number typed by hand becomes a link once a space or a new line follows it. The caret stays
+// where it was, and undo takes the link away again.
+function linkifyAroundCaret(ed) {
+  const block = ed.dom.getParent(ed.selection.getNode(), ed.dom.isBlock);
+  const lines = [block, block && block.previousElementSibling]
+    .filter(b => b && b !== ed.getBody() && findPhones(b.textContent).length);
+  if (!lines.length) return;
+  ed.undoManager.transact(() => {
+    const bookmark = ed.selection.getBookmark();
+    for (const line of lines) linkifyText(line);
+    ed.selection.moveToBookmark(bookmark);
+  });
+  onEdit();
+}
+
+function watchPhoneLinks(ed) {
+  ed.on('keyup', e => {
+    if (!e.isComposing && (e.key === ' ' || e.key === 'Enter')) linkifyAroundCaret(ed);
+  });
+  // Phone keyboards often report no key, only what they typed.
+  ed.on('input', e => {
+    if (!e.isComposing && (e.inputType === 'insertParagraph' || (e.inputType === 'insertText' && e.data === ' '))) linkifyAroundCaret(ed);
+  });
+  // On a phone a tap on a number opens the dialer straight away; on a PC, Ctrl+click or the
+  // link bar's open button does, and a plain click still places the caret for editing.
+  const body = ed.getBody();
+  let start = null;
+  body.addEventListener('touchstart', e => {
+    const t = e.touches[0];
+    start = e.touches.length === 1 ? { x: t.clientX, y: t.clientY } : null;
+  }, { passive: true });
+  body.addEventListener('touchend', e => {
+    const t = e.changedTouches[0];
+    if (!start || Math.hypot(t.clientX - start.x, t.clientY - start.y) > 10) return;
+    const link = e.target.closest && e.target.closest('a[href^="tel:"]');
+    if (!link) return;
+    e.preventDefault();
+    const a = document.createElement('a');
+    a.href = link.getAttribute('href');
+    document.body.append(a);
+    a.click();
+    a.remove();
+  });
+}
+
+// Turns typed or pasted addresses and phone numbers into links; the autolink plugin only catches
+// addresses as they are typed.
 function linkifyText(root) {
   const doc = root.ownerDocument;
   const walker = doc.createTreeWalker(root, NodeFilter.SHOW_TEXT);
   const nodes = [];
   while (walker.nextNode()) {
     const node = walker.currentNode;
-    if (!node.parentElement.closest('a') && /https?:\/\/|www\./i.test(node.data)) nodes.push(node);
+    if (!node.parentElement.closest('a') && /https?:\/\/|www\.|\d{4}/i.test(node.data)) nodes.push(node);
   }
   for (const node of nodes) {
-    const urls = findUrls(node.data);
+    const urls = findLinks(node.data);
     if (!urls.length) continue;
     const parts = doc.createDocumentFragment();
     let at = 0;
@@ -925,7 +984,6 @@ async function insertImages(files) {
 // ---------- List and note view ----------
 
 let currentId = null;
-let activeTag = null;
 let saveTimer = null;
 let savedValue = '';
 let savedTitle = '';
@@ -1213,7 +1271,6 @@ function toggleOrderEditing() {
   orderEditing = !orderEditing;
   if (orderEditing) {
     $('search').value = '';
-    activeTag = null;
   }
   $('order-edit').textContent = orderEditing ? '완료' : '순서 편집';
   $('order-edit').classList.toggle('on', orderEditing);
@@ -1281,26 +1338,13 @@ async function render() {
   // Blank notes stay hidden from the list unless they are the one being edited.
   const visible = all.filter(n => hasContent(n) || n.id === currentId);
   const places = placeMissing(visible);
-  const tags = [...new Set(visible.flatMap(n => tagsOf(`${n.title || ''} ${n.text}`)))].sort((a, b) => a.localeCompare(b, 'ko'));
-  if (activeTag && !tags.includes(activeTag)) activeTag = null;
-
-  $('tags').replaceChildren(...tags.map(tag => {
-    const b = document.createElement('button');
-    b.type = 'button';
-    b.textContent = '#' + tag;
-    b.className = tag === activeTag ? 'on' : '';
-    b.onclick = () => { activeTag = tag === activeTag ? null : tag; render(); };
-    return b;
-  }));
-
   const q = $('search').value.trim().toLowerCase();
   const shown = visible
     .filter(n => !q || searchableText(n).includes(q))
-    .filter(n => !activeTag || tagsOf(`${n.title || ''} ${n.text}`).includes(activeTag))
     .sort((a, b) => places[a.id].order - places[b.id].order || b.updated.localeCompare(a.updated));
 
   // Searching lists matching notes flat, each with its folder; otherwise folders hold their notes.
-  const flat = Boolean(q || activeTag);
+  const flat = Boolean(q);
   const folders = flat ? [] : liveFolders(places);
   const inFolder = n => folderOf(n.id, places);
   const top = shown.filter(n => flat || !inFolder(n));
@@ -1463,7 +1507,7 @@ async function render() {
   };
   $('list').replaceChildren(
     // todo.js may still be loading on the first draw; it draws the list again once it is in.
-    ...(q || activeTag || typeof todoEntry !== 'function' ? [] : [todoEntry()]),
+    ...(q || typeof todoEntry !== 'function' ? [] : [todoEntry()]),
     ...(favorites.length ? [favCard()] : []),
     ...(favorites.length && others.length ? [notesLabel()] : []),
     ...others.map(row('note')),
@@ -1472,7 +1516,7 @@ async function render() {
 
   const empty = $('empty');
   empty.hidden = shown.length > 0;
-  empty.textContent = q || activeTag ? '찾는 노트가 없어요.' : '아직 노트가 없어요. ＋ 버튼으로 시작하세요.';
+  empty.textContent = q ? '찾는 노트가 없어요.' : '아직 노트가 없어요. ＋ 버튼으로 시작하세요.';
   if ($('trash').open) await renderTrash();
   if ($('todo').open) renderTodos();
 }

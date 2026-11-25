@@ -1,5 +1,5 @@
 'use strict';
-// build notes-v51 (checked by sw.js)
+// build notes-v52 (checked by sw.js)
 
 // ---------- To-do list ----------
 // Kept in one repository file, todos.json, and merged item by item, so ticks made on two
