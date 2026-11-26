@@ -1,6 +1,6 @@
 'use strict';
 // Must match CACHE in sw.js, which refuses to store a copy of this file without it.
-const BUILD = 'notes-v52';
+const BUILD = 'notes-v53';
 
 const $ = id => document.getElementById(id);
 const CFG_KEY = 'notes.config';
