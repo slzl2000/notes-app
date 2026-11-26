@@ -1,4 +1,4 @@
-/* build notes-v54 (checked by sw.js) */
+/* build notes-v55 (checked by sw.js) */
 :root {
   color-scheme: light dark;
   --bg: #F7F8F9;
@@ -10,8 +10,8 @@
   --accent-text: #ffffff;
   --selected: #ECE9FB;
   --danger: #b3321f;
-  --urgent: #a83a2a;
-  --urgent-bg: rgb(168 58 42 / 6%);
+  --urgent: #C2357F;
+  --urgent-bg: rgb(194 53 127 / 6%);
   --text-soft: #3A3F4A;
   --handle: #9EA3AD;
   --card: #F0F1F4;
@@ -28,8 +28,8 @@
     --accent-text: #17181C;
     --selected: #2E2A4A;
     --danger: #ef8571;
-    --urgent: #c8704e;
-    --urgent-bg: rgb(200 112 78 / 9%);
+    --urgent: #F08DC0;
+    --urgent-bg: rgb(240 141 192 / 9%);
     --text-soft: #C8CBD2;
     --handle: #7E838D;
     --card: #24262B;
