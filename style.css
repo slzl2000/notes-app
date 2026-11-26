@@ -1,39 +1,39 @@
-/* build notes-v53 (checked by sw.js) */
+/* build notes-v54 (checked by sw.js) */
 :root {
   color-scheme: light dark;
-  --bg: #f7f5f0;
-  --panel: #fffefb;
-  --text: #24221e;
-  --muted: #736e64;
-  --line: #e2ded4;
-  --accent: #b5620f;
+  --bg: #F7F8F9;
+  --panel: #FFFFFF;
+  --text: #17181C;
+  --muted: #5D6470;
+  --line: #D9DCE2;
+  --accent: #4A34BE;
   --accent-text: #ffffff;
-  --selected: #f1e7d6;
+  --selected: #ECE9FB;
   --danger: #b3321f;
   --urgent: #a83a2a;
   --urgent-bg: rgb(168 58 42 / 6%);
-  --text-soft: #4b4741;
-  --handle: #a19b91;
-  --card: #f5f2eb;
-  --edge: #aba69c;
+  --text-soft: #3A3F4A;
+  --handle: #9EA3AD;
+  --card: #F0F1F4;
+  --edge: #A4A9B3;
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #1b1a18;
-    --panel: #232220;
-    --text: #ece9e2;
-    --muted: #a09b90;
-    --line: #38352f;
-    --accent: #e29a4a;
-    --accent-text: #1b1a18;
-    --selected: #3a3226;
+    --bg: #17181C;
+    --panel: #202227;
+    --text: #ECEEF1;
+    --muted: #A6ABB5;
+    --line: #303238;
+    --accent: #B8ACFF;
+    --accent-text: #17181C;
+    --selected: #2E2A4A;
     --danger: #ef8571;
     --urgent: #c8704e;
     --urgent-bg: rgb(200 112 78 / 9%);
-    --text-soft: #c6c2b9;
-    --handle: #8a857b;
-    --card: #292826;
-    --edge: #6c685f;
+    --text-soft: #C8CBD2;
+    --handle: #7E838D;
+    --card: #24262B;
+    --edge: #5E636D;
   }
 }
 * { box-sizing: border-box; }
@@ -337,8 +337,8 @@ body.list-dragging, body.list-dragging * { cursor: grabbing; user-select: none; 
   .tox .tox-textfield,
   .tox .tox-listbox,
   .tox .tox-selectfield select,
-  .tox .tox-collection__item--active { background: #33312d !important; border-color: var(--line) !important; }
-  .tox .tox-tbtn:hover { background: #3a3733 !important; }
+  .tox .tox-collection__item--active { background: #2A2C32 !important; border-color: var(--line) !important; }
+  .tox .tox-tbtn:hover { background: #33353C !important; }
   .tox .tox-tbtn--enabled,
   .tox .tox-tbtn--enabled:hover { background: var(--selected) !important; }
   .tox .tox-pop::before,

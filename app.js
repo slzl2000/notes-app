@@ -1,6 +1,6 @@
 'use strict';
 // Must match CACHE in sw.js, which refuses to store a copy of this file without it.
-const BUILD = 'notes-v53';
+const BUILD = 'notes-v54';
 
 const $ = id => document.getElementById(id);
 const CFG_KEY = 'notes.config';
@@ -206,14 +206,14 @@ const darkMode = () => matchMedia('(prefers-color-scheme: dark)').matches;
 const DARK_TEXT_COLORS = ['#000', '#000000', 'black', 'rgb(0, 0, 0)', 'rgb(0,0,0)', '#111', '#111111', '#222', '#222222', '#333', '#333333', 'rgb(51, 51, 51)', 'rgb(34, 34, 34)', 'rgb(17, 17, 17)'];
 const DARK_CONTENT_STYLE = `
         html { color-scheme: dark; }
-        html, body { background: #1b1a18; color: #ece9e2; }
+        html, body { background: #17181C; color: #ECEEF1; }
         /* The thin default caret disappears on the dark page; a bright one stands out. Text
            pasted from web pages can carry its own caret colour, so this one always wins. */
-        body, body * { caret-color: #ffb45e !important; }
+        body, body * { caret-color: #B8ACFF !important; }
         /* The dark skin paints links and the box around a link being edited the same blue. */
         a { color: #7db8ff; }
-        .mce-content-body [data-mce-selected=inline-boundary] { background: #3a3226; }
-        ::selection { background: #e29a4a; color: #1b1a18; }
+        .mce-content-body [data-mce-selected=inline-boundary] { background: #2E2A4A; }
+        ::selection { background: #B8ACFF; color: #17181C; }
         ${DARK_TEXT_COLORS.map(c => `[style*="color: ${c}"]:not([style*="background"]), [style*="color:${c}"]:not([style*="background"])`).join(', ')} { color: inherit !important; }`;
 
 function ensureEditor() {
@@ -269,7 +269,7 @@ function ensureEditor() {
         .copy-box { position: relative; margin: 10px 0; padding: 8px 76px 8px 12px; border: 1px solid rgb(128 128 128 / 35%); border-radius: 8px; background: rgb(128 128 128 / 8%); }
         .copy-box > :first-child { margin-top: 0; }
         .copy-box > :last-child { margin-bottom: 0; }
-        .copy-box::after { content: '복사'; position: absolute; top: 6px; right: 6px; padding: 3px 12px; border-radius: 6px; background: #c8672b; color: #fff; font-size: 13px; font-weight: 600; line-height: 1.5; cursor: pointer; user-select: none; -webkit-user-select: none; }
+        .copy-box::after { content: '복사'; position: absolute; top: 6px; right: 6px; padding: 3px 12px; border-radius: 6px; background: #6A4FD8; color: #fff; font-size: 13px; font-weight: 600; line-height: 1.5; cursor: pointer; user-select: none; -webkit-user-select: none; }
         .copy-box[data-mce-copied]::after { content: '복사됨'; background: #5f8f4e; }
         ::highlight(note-hit) { background: #ffe08a; color: #24221e; }
         ::highlight(note-current) { background: #f39a2d; color: #000; }${darkMode() ? DARK_CONTENT_STYLE : ''}`,

@@ -1,5 +1,5 @@
 'use strict';
-// build notes-v53 (checked by sw.js)
+// build notes-v54 (checked by sw.js)
 
 // The vault keeps each entry in its own AES-GCM encrypted file under vault/ in the repository.
 // A random vault key encrypts the entries; the passphrase (and optionally a fingerprint) only
@@ -853,8 +853,8 @@ async function enableBio() {
     const prfSalt = bytesToBase64(randomBytes(32));
     const credential = await navigator.credentials.create({
       publicKey: {
-        rp: { name: '내 노트', id: location.hostname },
-        user: { id: randomBytes(16), name: 'vault', displayName: '내 노트 금고' },
+        rp: { name: '별노트', id: location.hostname },
+        user: { id: randomBytes(16), name: 'vault', displayName: '별노트 금고' },
         challenge: randomBytes(32),
         pubKeyCredParams: [{ type: 'public-key', alg: -7 }, { type: 'public-key', alg: -257 }],
         authenticatorSelection: { authenticatorAttachment: 'platform', residentKey: 'preferred', userVerification: 'required' },
